@@ -244,6 +244,7 @@
       </div>
       <div class="spacer"></div>
       <button class="btn-ghost" id="btn-new">New passage</button>
+      <button class="btn-ghost" id="btn-finish" disabled>Finish</button>
       <button class="btn-ghost" id="btn-reset" disabled>Reset</button>
       <button class="btn-primary" id="btn-start">Start test</button>
     </div>
@@ -470,7 +471,7 @@ function startTest(){
   durSec=parseInt($("dur").value,10); remaining=durSec; finished=false;
   started=true; startTs=Date.now();
   input.disabled=false; input.value=""; input.focus();
-  $("btn-start").disabled=true; $("btn-reset").disabled=false;
+  $("btn-start").disabled=true; $("btn-reset").disabled=false; $("btn-finish").disabled=false;
   $("dur").disabled=$("bmode").disabled=$("src").disabled=$("btn-new").disabled=true;
   renderTime(); updateStats();
   tick=setInterval(()=>{ remaining=Math.max(0,durSec-Math.floor((Date.now()-startTs)/1000)); renderTime(); updateStats(); if(remaining<=0) finishTest(); },250);
@@ -478,14 +479,14 @@ function startTest(){
 function armIdle(){
   clearInterval(tick); started=false; finished=false; remaining=durSec;
   input.value=""; input.disabled=true;
-  $("btn-start").disabled=false; $("btn-reset").disabled=true;
+  $("btn-start").disabled=false; $("btn-reset").disabled=true; $("btn-finish").disabled=true;
   $("dur").disabled=$("bmode").disabled=$("src").disabled=$("btn-new").disabled=false;
   renderTime(); resetHud();
 }
 function resetTest(){ armIdle(); renderPassage(); }
 function finishTest(){
   if(finished) return; finished=true; started=false; clearInterval(tick);
-  input.disabled=true; $("btn-start").disabled=false; $("btn-reset").disabled=false;
+  input.disabled=true; $("btn-start").disabled=false; $("btn-reset").disabled=false; $("btn-finish").disabled=true;
   $("dur").disabled=$("bmode").disabled=$("src").disabled=$("btn-new").disabled=false;
   showResults(computeStats());
 }
@@ -505,7 +506,17 @@ input.addEventListener("keydown",e=>{
 });
 input.addEventListener("paste",e=>e.preventDefault());
 input.addEventListener("drop",e=>e.preventDefault());
-input.addEventListener("input",()=>{ if(!started) return; paint(); updateStats(); if(input.value.length>=current.text.length) finishTest(); });
+input.addEventListener("input",()=>{
+  if(!started) return;
+  paint(); updateStats();
+  const parts=input.value.split(" ");
+  const lastPW=passageWords[passageWords.length-1]||"";
+  const reachedEnd =
+    input.value.length>=current.text.length ||           // typed the whole thing
+    parts.length>passageWords.length ||                   // went past the last word
+    (parts.length===passageWords.length && parts[parts.length-1].length>=lastPW.length); // finished the last word
+  if(reachedEnd) finishTest();
+});
 
 function paint(){
   const parts=input.value.split(" ");
@@ -709,6 +720,7 @@ $("hist-clear").onclick=()=>{ store.set("jk_history","[]"); renderHistory(); };
 /* ===== wire up ===== */
 $("btn-start").onclick=startTest;
 $("btn-reset").onclick=resetTest;
+$("btn-finish").onclick=()=>{ if(started) finishTest(); };
 $("btn-new").onclick=()=>{ armIdle(); makePassage(); };
 $("src").onchange=()=>{ if(!started){ armIdle(); makePassage(); } };
 $("smode").onchange=()=>store.set("jk_smode",$("smode").value);
