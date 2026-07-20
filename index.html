@@ -215,6 +215,13 @@
           <option value="none">Disabled</option>
         </select>
       </div>
+      <div class="field">
+        <label for="smode">Scoring</label>
+        <select id="smode">
+          <option value="typingmaster" selected>TypingMaster (JKSSB)</option>
+          <option value="fullhalf">Full / Half (SSC-style)</option>
+        </select>
+      </div>
       <div class="spacer"></div>
       <button class="btn-ghost" id="btn-new">New passage</button>
       <button class="btn-ghost" id="btn-reset" disabled>Reset</button>
@@ -228,6 +235,10 @@
       <span>Adjust all target speeds by</span>
       <input type="number" id="calib" value="0" min="-20" max="20"> wpm
     </span>
+    <span class="pill calib-edit">
+      <span>Exam benchmark — real top net so far:</span>
+      <input type="number" id="benchmark" min="20" max="140" placeholder="—"> wpm
+    </span>
     <span class="pill" id="note" style="display:none;color:#ffd9b0;border-color:rgba(199,124,30,.45)"></span>
   </div>
 
@@ -238,7 +249,7 @@
 
   <footer class="foot">
     <b>Live sources</b> (India &amp; current affairs, Jammu &amp; Kashmir) stream topic text from <b>Wikipedia</b> (CC BY-SA) directly in your browser — needs internet, and falls back to the offline library if blocked. <b>Offline sources</b> use public-domain books (Austen, Carroll, Chesterton, Bryant) plus original exam-style texts. Newspaper articles are copyrighted, so they aren't included — the live Wikipedia topics cover the same current-affairs and state ground legally.<br>
-    Scoring: Gross WPM = (keystrokes ÷ 5) ÷ minutes · Net WPM = Gross − (errors ÷ minutes) · Accuracy = correct ÷ typed. The <b>target top speed</b> is auto-estimated per passage — a realistic ceiling for a fast, accurate typist on that specific text (strong exam toppers reach roughly 60–70 WPM on ordinary prose, less on dense number/name-heavy text), judged from word length, sentence length, punctuation, capitals and numbers. Marks = (net ÷ target) × 20, a stand-in for the real exam's batch-relative scoring. Edit the target for any passage, or shift every estimate with the calibration control. Verify exact rules against the official JKSSB notification.
+    Scoring is word-by-word. <b>TypingMaster mode (default)</b> — the software JKSSB reportedly uses — counts every mismatched word as one full error (a wrong letter, a capital, or a spacing slip each spoil the whole word); Net WPM = Gross − (wrong words ÷ minutes). <b>Full/Half mode</b> is the SSC/UPSSSC convention where capitalization, punctuation, transposition and spacing count as ½ mistakes. The exact internal method JKSSB uses isn't officially published, so both are provided as close estimates — pick whichever your coaching material describes. Gross = (keystrokes ÷ 5) ÷ minutes; test is ~10 minutes; accuracy below 90% disqualifies; backspace only fixes the current word and carries no direct penalty. Marks = (net ÷ target top speed) × 20. If you enter the <b>exam benchmark</b> (the real highest net speed reported in the ongoing exam), the result also shows marks against that real figure — the closest estimate to your actual batch-relative score. Verify against the official JKSSB notification.
   </footer>
 </div>
 
@@ -248,6 +259,7 @@
       <div class="verdict" id="verdict"></div>
       <div class="verdict-sub" id="verdict-sub"></div>
       <div class="marks-line" id="marks-line"></div>
+      <div class="marks-line" id="marks-line-b" style="display:none;margin-top:8px;background:var(--teal-lite);border-color:rgba(14,140,134,.4)"></div>
     </div>
     <div class="topper-field">
       Target top speed for this <b id="mf-diff">Medium</b> passage:
@@ -315,7 +327,7 @@ function buildCurrent(name,src,text){
 
 /* ===== state ===== */
 let started=false,finished=false,startTs=0,durSec=600,remaining=600,tick=null,chars=[];
-let bestNet=0, formalIdx=0, calib=0;
+let bestNet=0, formalIdx=0, calib=0, benchmark=0;
 let current={name:"",src:"",text:"",diff:"Medium",autoTop:60,top:60};
 
 /* ===== source selector ===== */
@@ -484,24 +496,54 @@ function autoScroll(){
 }
 
 /* ===== stats ===== */
+/* ===== word-by-word evaluation: full mistakes (1) & half mistakes (0.5), exam-style ===== */
+function evaluateWords(typed, passage){
+  const P=passage.split(" ");
+  const endsSpace=/\s$/.test(typed);
+  const T=typed.trim().length?typed.trim().split(/\s+/):[];
+  const strip=s=>s.replace(/[^A-Za-z0-9]/g,"");
+  const last=T.length-1;
+  let i=0,j=0,full=0,half=0;
+  while(i<P.length && j<T.length){
+    const p=P[i], t=T[j];
+    const inProgress=(j===last && !endsSpace);
+    if(t===p){ i++;j++; continue; }
+    if(inProgress && p.toLowerCase().startsWith(t.toLowerCase())){ i++;j++; continue; } // still typing this word
+    if(t.toLowerCase()===p.toLowerCase()){ half++; i++;j++; continue; }                  // capitalization
+    if(strip(t)===strip(p) && strip(p)){ half++; i++;j++; continue; }                     // punctuation only
+    if(i+1<P.length && t===p+P[i+1]){ half++; i+=2;j++; continue; }                        // missing space (merged)
+    if(j+1<T.length && (t+T[j+1])===p){ half++; i++;j+=2; continue; }                      // extra space (split word)
+    if(i+1<P.length && j+1<T.length && t===P[i+1] && T[j+1]===p){ half++; i+=2;j+=2; continue; } // transposition
+    if(i+1<P.length && t===P[i+1]){ full++; i++; continue; }                               // omitted word
+    if(j+1<T.length && T[j+1]===p){ full++; j++; continue; }                               // added word
+    full++; i++;j++;                                                                        // misspelling / wrong word
+  }
+  while(j<T.length){ if(!(j===last && !endsSpace)) full++; j++; }                           // trailing extra words
+  const extra=(typed.match(/ {2,}/g)||[]).length + (/^\s/.test(typed)?1:0);                // stray double/leading spaces
+  half+=extra;
+  return {full, half};
+}
 function computeStats(){
   const t=input.value;
   const elapsed=Math.max(1,(started?Math.floor((Date.now()-startTs)/1000):durSec-remaining));
   const mins=Math.max(elapsed/60,1/60);
-  let correct=0,errors=0;
-  for(let i=0;i<t.length;i++){ if(i<chars.length){ (t[i]===chars[i].textContent)?correct++:errors++; } else errors++; }
+  const ev=evaluateWords(t, current.text);
+  const sm=$("smode")?$("smode").value:"typingmaster";
+  const errors = sm==="fullhalf" ? (ev.full + ev.half*0.5) : (ev.full + ev.half); // TM: every wrong word = 1 full
   const keystrokes=t.length;
-  const gross=(keystrokes/5)/mins;
-  const net=Math.max(0,gross-(errors/mins));
-  const acc=keystrokes>0?(correct/keystrokes)*100:100;
-  return {elapsed,keystrokes,correct,errors,gross,net,acc};
+  const grossWords=keystrokes/5;
+  const gross=grossWords/mins;
+  const net=Math.max(0, gross-(errors/mins));
+  const acc=grossWords>0?Math.max(0,(grossWords-errors)/grossWords)*100:100;
+  return {elapsed,keystrokes,gross,net,acc,errors,full:ev.full,half:ev.half};
 }
+const fmtErr=n=>Number.isInteger(n)?String(n):n.toFixed(1);
 function updateStats(){
   const s=computeStats();
   $("v-gross").innerHTML=Math.round(s.gross)+'<span class="unit"> wpm</span>';
   const nv=$("v-net"); nv.innerHTML=Math.round(s.net)+'<span class="unit"> wpm</span>'; nv.className="val "+(s.net>=35?"pass":"fail");
   const av=$("v-acc"); av.innerHTML=Math.round(s.acc)+'<span class="unit">%</span>'; av.className="val "+(s.acc>=90?"pass":"fail");
-  $("v-err").textContent=s.errors;
+  $("v-err").textContent=fmtErr(s.errors);
 }
 function resetHud(){
   $("v-gross").innerHTML='0<span class="unit"> wpm</span>';
@@ -527,21 +569,30 @@ async function showResults(s){
   }
   $("mf-diff").textContent=current.diff;
   $("topper").value=current.top;
-  let lastMarks=0;
+  let lastMarks=0, lastB=null;
   const renderMarks=()=>{
     const top=Math.max(1,parseFloat($("topper").value)||current.top);
     lastMarks=Math.min(20,(s.net/top)*20);
-    $("marks-line").innerHTML=`Estimated marks: <b>${lastMarks.toFixed(1)} / 20</b> &nbsp;·&nbsp; (net ${Math.round(s.net)} ÷ target ${Math.round(top)}) × 20`;
+    $("marks-line").innerHTML=`Marks vs app target: <b>${lastMarks.toFixed(1)} / 20</b> &nbsp;·&nbsp; (net ${Math.round(s.net)} ÷ target ${Math.round(top)}) × 20`;
+    const bl=$("marks-line-b");
+    if(benchmark>0){
+      lastB=Math.min(20,(s.net/benchmark)*20);
+      bl.style.display="inline-block";
+      bl.innerHTML=`Marks vs real exam benchmark: <b>${lastB.toFixed(1)} / 20</b> &nbsp;·&nbsp; (net ${Math.round(s.net)} ÷ benchmark ${Math.round(benchmark)}) × 20`;
+    } else { lastB=null; bl.style.display="none"; }
   };
   renderMarks();
   $("topper").oninput=()=>{ const val=Math.max(1,parseFloat($("topper").value)||current.top); current.top=clampTop(val); $("topper-inline").value=current.top; renderMarks(); };
 
+  const sm=$("smode").value;
+  const errCells = sm==="fullhalf"
+    ? [{k:"Full Mistakes",v:s.full,u:"×1",c:s.full>0?"":"good"},{k:"Half Mistakes",v:s.half,u:"×½",c:s.half>0?"":"good"}]
+    : [{k:"Wrong Words",v:s.full+s.half,u:"×1",c:(s.full+s.half)>0?"":"good"},{k:"Keystrokes",v:s.keystrokes,u:"",c:""}];
   const cells=[
     {k:"Net Speed",v:Math.round(s.net),u:"wpm",c:s.net>=35?"good":"warn"},
     {k:"Accuracy",v:s.acc.toFixed(1),u:"%",c:s.acc>=90?"good":"warn"},
     {k:"Gross Speed",v:Math.round(s.gross),u:"wpm",c:""},
-    {k:"Errors",v:s.errors,u:"",c:s.errors>0?"":"good"},
-    {k:"Keystrokes",v:s.keystrokes,u:"",c:""},
+    ...errCells,
     {k:"Time Taken",v:`${Math.floor(s.elapsed/60)}:${String(s.elapsed%60).padStart(2,"0")}`,u:"",c:""}
   ];
   $("res-grid").innerHTML=cells.map(c=>`<div class="res-cell ${c.c}"><div class="k">${c.k}</div><div class="v">${c.v}${c.u?` <small>${c.u}</small>`:""}</div></div>`).join("");
@@ -554,7 +605,7 @@ async function showResults(s){
   $("tip").innerHTML=tip;
 
   if(s.net>bestNet){ bestNet=s.net; $("best-val").textContent=Math.round(bestNet)+" wpm"; store.set("jk_best",Math.round(bestNet)); }
-  recordAttempt(s, q, lastMarks);
+  recordAttempt(s, q, lastMarks, lastB);
   $("overlay").classList.add("show");
 }
 function closeModal(){ $("overlay").classList.remove("show"); }
@@ -575,9 +626,9 @@ $("topper-inline").addEventListener("input",()=>{
 
 /* ===== attempt history (localStorage) ===== */
 function loadHistory(){ try{ return JSON.parse(store.get("jk_history")||"[]"); }catch(e){ return []; } }
-function recordAttempt(s,qualified,marks){
+function recordAttempt(s,qualified,marks,bmarks){
   const h=loadHistory();
-  h.unshift({t:Date.now(),net:Math.round(s.net),acc:+s.acc.toFixed(1),gross:Math.round(s.gross),err:s.errors,diff:current.diff,top:current.top,marks:+marks.toFixed(1),q:qualified,src:current.src.replace(/^—\s*/,"")});
+  h.unshift({t:Date.now(),net:Math.round(s.net),acc:+s.acc.toFixed(1),gross:Math.round(s.gross),err:s.errors,diff:current.diff,top:current.top,marks:+marks.toFixed(1),bmarks:bmarks!=null?+bmarks.toFixed(1):null,q:qualified,src:current.src.replace(/^—\s*/,"")});
   while(h.length>40) h.pop();
   store.set("jk_history",JSON.stringify(h));
   renderHistory();
@@ -589,9 +640,10 @@ function renderHistory(){
   rows.innerHTML=h.slice(0,8).map(a=>{
     const d=new Date(a.t), when=d.toLocaleDateString(undefined,{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
     const short=a.src.length>34?a.src.slice(0,32)+"…":a.src;
+    const mk=a.bmarks!=null?`${a.bmarks}<span style="opacity:.6">/20 vs bm</span>`:`${a.marks}<span style="opacity:.6">/20</span>`;
     return `<div class="hrow">
       <span class="when">${when}</span>
-      <span class="meta"><b>${a.net}</b> net · <b>${a.acc}%</b> · <b>${a.marks}</b>/20 · <span class="diffdot ${a.diff}">${a.diff}</span> · ${short}</span>
+      <span class="meta"><b>${a.net}</b> net · <b>${a.acc}%</b> · <b>${mk}</b> · <span class="diffdot ${a.diff}">${a.diff}</span> · ${short}</span>
       <span class="verd ${a.q?'q':'nq'}">${a.q?'PASS':'FAIL'}</span>
     </div>`;
   }).join("");
@@ -603,6 +655,8 @@ $("btn-start").onclick=startTest;
 $("btn-reset").onclick=resetTest;
 $("btn-new").onclick=()=>{ armIdle(); makePassage(); };
 $("src").onchange=()=>{ if(!started){ armIdle(); makePassage(); } };
+$("smode").onchange=()=>store.set("jk_smode",$("smode").value);
+$("benchmark").addEventListener("input",()=>{ const v=parseFloat($("benchmark").value); benchmark=(!isNaN(v)&&v>0)?clampTop(v):0; store.set("jk_benchmark",benchmark); });
 $("dur").onchange=e=>{ if(!started){ durSec=remaining=parseInt(e.target.value,10); renderTime(); } };
 $("btn-again").onclick=()=>{ closeModal(); armIdle(); renderPassage(); setTimeout(startTest,120); };
 $("btn-next").onclick=()=>{ closeModal(); armIdle(); makePassage(); };
@@ -613,6 +667,8 @@ passageEl.addEventListener("click",()=>{ if(started) input.focus(); });
 /* ===== init ===== */
 (async function init(){
   const cb=store.get("jk_calib"); if(cb!=null){ const v=parseFloat(cb); if(!isNaN(v)) calib=v; }
+  const sm=store.get("jk_smode"); if(sm){ $("smode").value=sm; }
+  const bm=store.get("jk_benchmark"); if(bm!=null){ const v=parseFloat(bm); if(!isNaN(v)&&v>0){ benchmark=v; $("benchmark").value=v; } }
   durSec=remaining=600;
   $("src").value="mix";            // start offline/instant; user can pick a live source
   await makePassage(); syncCalib(); renderTime(); resetHud(); renderHistory();
