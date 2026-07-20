@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Typester — JKSSB Junior Assistant Typing Practice</title>
+<title>JK TypeTest — JKSSB Junior Assistant Typing Practice</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -61,7 +61,7 @@
   .topper-inline input:focus{outline:none;border-color:var(--teal)}
   .badge-length{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);background:#f0f1ec;border:1px solid var(--line);padding:4px 10px;border-radius:100px}
 
-  .passage{font-family:var(--font-passage);font-size:20px;line-height:1.95;color:#41505b;padding:24px 30px 8px;user-select:none}
+  .passage{position:relative;font-family:var(--font-passage);font-size:20px;line-height:39px;color:#41505b;padding:20px 30px 8px;user-select:none;height:332px;overflow:hidden}
   .passage .ch{position:relative;border-radius:2px}
   .passage .ch.done{color:var(--correct);background:var(--correct-bg)}
   .passage .ch.wrong{color:var(--error);background:var(--error-bg);text-decoration:underline;text-decoration-color:rgba(192,38,38,.5)}
@@ -71,7 +71,7 @@
 
   .type-zone{padding:6px 30px 24px}
   .type-label{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin:8px 0 8px}
-  textarea#input{width:100%;min-height:120px;resize:vertical;font-family:var(--font-passage);font-size:19px;line-height:1.8;color:var(--ink);padding:16px 18px;border:1.5px solid var(--line);border-radius:11px;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
+  textarea#input{width:100%;min-height:84px;resize:vertical;font-family:var(--font-passage);font-size:19px;line-height:1.8;color:var(--ink);padding:14px 18px;border:1.5px solid var(--line);border-radius:11px;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
   textarea#input:focus{border-color:var(--teal);box-shadow:0 0 0 4px rgba(14,140,134,.14)}
   textarea#input:disabled{background:#f6f7f2;color:#9aa7b0;cursor:not-allowed}
 
@@ -144,7 +144,7 @@
   @media (max-width:720px){
     .hud{grid-template-columns:repeat(3,1fr)}
     .stat.acc,.stat.err{border-top:1px solid var(--line-dk)}
-    .passage{font-size:18px;padding:20px 20px 6px}
+    .passage{font-size:18px;line-height:34px;height:288px;padding:16px 20px 6px}
     textarea#input{font-size:17px}
     .stat .val{font-size:23px}
   }
@@ -420,6 +420,7 @@ function renderPassage(){
     passageEl.appendChild(s); chars.push(s);
   }
   if(chars[0]) chars[0].classList.add("cur");
+  passageEl.scrollTop=0;
 }
 
 /* ===== test control ===== */
@@ -472,6 +473,14 @@ function paint(){
     if(i<t.length){ s.classList.add(t[i]===s.textContent?"done":"wrong"); }
     else if(i===t.length){ s.classList.add("cur"); }
   }
+  autoScroll();
+}
+function autoScroll(){
+  const ref=passageEl.querySelector(".ch.cur")||chars[Math.min(input.value.length,chars.length-1)];
+  if(!ref) return;
+  const lh=parseFloat(getComputedStyle(passageEl).lineHeight)||39;
+  const target=Math.max(0, ref.offsetTop - lh*2);   // keep current line ~3rd from top; earlier lines scroll away
+  passageEl.scrollTop=target;
 }
 
 /* ===== stats ===== */
