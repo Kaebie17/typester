@@ -62,12 +62,8 @@
   .badge-length{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);background:#f0f1ec;border:1px solid var(--line);padding:4px 10px;border-radius:100px}
 
   .passage{position:relative;font-family:var(--font-passage);font-size:20px;line-height:39px;color:#41505b;padding:20px 30px 8px;user-select:none;height:332px;overflow:hidden}
-  .passage .ch{position:relative;border-radius:2px}
-  .passage .ch.done{color:var(--correct);background:var(--correct-bg)}
-  .passage .ch.wrong{color:var(--error);background:var(--error-bg);text-decoration:underline;text-decoration-color:rgba(192,38,38,.5)}
-  .passage .ch.cur{background:rgba(14,140,134,.16);box-shadow:inset 0 -2px 0 var(--teal)}
-  .passage .ch.cur::after{content:"";position:absolute;left:-1px;top:6%;height:88%;width:2px;background:var(--teal);animation:blink 1.05s step-end infinite}
-  @keyframes blink{50%{opacity:0}}
+  .passage .w{color:#41505b}
+  .passage .w.cur{color:#1d6fe0;text-decoration:underline;text-decoration-color:#1d6fe0;text-decoration-thickness:2px;text-underline-offset:3px}
 
   .type-zone{padding:6px 30px 24px}
   .type-label{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin:8px 0 8px}
@@ -127,6 +123,20 @@
   .marks-line b{color:var(--teal-dk)}
   .res-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line)}
   .res-cell{background:var(--paper);padding:18px 22px}
+  .dq{background:rgba(192,38,38,.1);border:1px solid rgba(192,38,38,.3);color:var(--bad);font-size:12.5px;font-weight:500;padding:9px 13px;border-radius:9px;margin-bottom:12px;text-align:left}
+  .vrows{display:flex;flex-direction:column;gap:8px}
+  .vrow{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:11px;border:1px solid var(--line);background:#fbfcf8}
+  .vrow.q{border-color:rgba(21,128,61,.35);background:rgba(21,128,61,.06)}
+  .vrow.nq{border-color:rgba(192,38,38,.3);background:rgba(192,38,38,.05)}
+  .vrow .vlabel{font-family:var(--font-brand);font-weight:600;font-size:13.5px;color:var(--ink);text-align:left;flex:1}
+  .vrow .vlabel small{font-family:var(--font-mono);font-weight:500;color:var(--muted);font-size:11px}
+  .vrow .vmarks{font-family:var(--font-mono);font-size:13px;color:var(--ink)}
+  .vrow .vmarks small{color:var(--muted)}
+  .vrow .vbadge{font-family:var(--font-brand);font-weight:700;font-size:12.5px;padding:4px 12px;border-radius:100px;color:#fff}
+  .vrow.q .vbadge{background:var(--ok)} .vrow.nq .vbadge{background:var(--bad)}
+  .hbadges{display:flex;gap:5px;justify-content:flex-end}
+  .hbadge{font-family:var(--font-mono);font-size:10.5px;font-weight:600;padding:3px 7px;border-radius:100px}
+  .hbadge.q{color:#4ade80;background:rgba(74,222,128,.14)} .hbadge.nq{color:#ff8f6b;background:rgba(255,143,107,.14)}
   .res-cell .k{font-size:10.5px;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted);font-weight:600}
   .res-cell .v{font-family:var(--font-mono);font-size:26px;font-weight:600;color:var(--ink);margin-top:3px}
   .res-cell .v small{font-size:13px;color:var(--muted)}
@@ -138,6 +148,16 @@
   .topper-field input:focus{outline:none;border-color:var(--teal)}
   .modal-foot{display:flex;gap:12px;padding:18px 30px 26px;flex-wrap:wrap}
   .modal-foot button{flex:1;min-width:140px}
+  .btn-review{display:block;width:calc(100% - 60px);margin:8px 30px 0;background:#f0f1ec;color:var(--ink);font-size:13px;font-weight:600;padding:9px;border-radius:9px;border:1px solid var(--line)}
+  .btn-review:hover{background:#e9eae4}
+  .review{padding:10px 30px 2px}
+  .review-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .rev-col{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .rev-h{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);font-weight:600;padding:8px 12px;background:#f0f1ec;border-bottom:1px solid var(--line)}
+  .rev-body{padding:12px;font-family:var(--font-passage);font-size:14px;line-height:1.7;color:#41505b;max-height:190px;overflow:auto}
+  .rev-body .miss{background:rgba(192,38,38,.12);color:var(--error);border-radius:3px;padding:0 2px;text-decoration:underline;text-decoration-color:var(--error)}
+  .rev-body .missp{background:rgba(29,111,224,.12);color:#1d6fe0;border-radius:3px;padding:0 2px}
+  @media(max-width:560px){.review-cols{grid-template-columns:1fr}}
 
   footer.foot{margin-top:26px;color:#6f8595;font-size:12px;line-height:1.7;text-align:center;max-width:760px;margin:26px auto 0}
 
@@ -239,6 +259,10 @@
       <span>Exam benchmark — real top net so far:</span>
       <input type="number" id="benchmark" min="20" max="140" placeholder="—"> wpm
     </span>
+    <span class="pill calib-edit">
+      <span>Pass mark:</span>
+      <input type="number" id="cutoff" min="0" max="20" value="10"> / 20
+    </span>
     <span class="pill" id="note" style="display:none;color:#ffd9b0;border-color:rgba(199,124,30,.45)"></span>
   </div>
 
@@ -249,17 +273,15 @@
 
   <footer class="foot">
     <b>Live sources</b> (India &amp; current affairs, Jammu &amp; Kashmir) stream topic text from <b>Wikipedia</b> (CC BY-SA) directly in your browser — needs internet, and falls back to the offline library if blocked. <b>Offline sources</b> use public-domain books (Austen, Carroll, Chesterton, Bryant) plus original exam-style texts. Newspaper articles are copyrighted, so they aren't included — the live Wikipedia topics cover the same current-affairs and state ground legally.<br>
-    Scoring is word-by-word. <b>TypingMaster mode (default)</b> — the software JKSSB reportedly uses — counts every mismatched word as one full error (a wrong letter, a capital, or a spacing slip each spoil the whole word); Net WPM = Gross − (wrong words ÷ minutes). <b>Full/Half mode</b> is the SSC/UPSSSC convention where capitalization, punctuation, transposition and spacing count as ½ mistakes. The exact internal method JKSSB uses isn't officially published, so both are provided as close estimates — pick whichever your coaching material describes. Gross = (keystrokes ÷ 5) ÷ minutes; test is ~10 minutes; accuracy below 90% disqualifies; backspace only fixes the current word and carries no direct penalty. Marks = (net ÷ target top speed) × 20. If you enter the <b>exam benchmark</b> (the real highest net speed reported in the ongoing exam), the result also shows marks against that real figure — the closest estimate to your actual batch-relative score. Verify against the official JKSSB notification.
+    There is no error feedback while you type (as in the real exam) — the passage only underlines the current word in blue. After the test, open <b>Review mistakes</b> for a side-by-side comparison of the passage and what you typed, with wrong words marked. Scoring is word-by-word. <b>TypingMaster mode (default)</b> — the software JKSSB reportedly uses — counts every mismatched word as one full error (a wrong letter, a capital, or a spacing slip each spoil the whole word); Net WPM = Gross − (wrong words ÷ minutes). <b>Full/Half mode</b> is the SSC/UPSSSC convention where capitalization, punctuation, transposition and spacing count as ½ mistakes. The exact internal method JKSSB uses isn't officially published, so both are provided as close estimates — pick whichever your coaching material describes. Gross = (keystrokes ÷ 5) ÷ minutes; test is ~10 minutes; accuracy below 90% disqualifies; backspace only fixes the current word and carries no direct penalty. Marks = (net ÷ target top speed) × 20. If you enter the <b>exam benchmark</b> (the real highest net speed reported in the ongoing exam), the result also shows marks against that real figure — the closest estimate to your actual batch-relative score. Verify against the official JKSSB notification.
   </footer>
 </div>
 
 <div class="overlay" id="overlay">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="verdict">
     <div class="modal-head">
-      <div class="verdict" id="verdict"></div>
-      <div class="verdict-sub" id="verdict-sub"></div>
-      <div class="marks-line" id="marks-line"></div>
-      <div class="marks-line" id="marks-line-b" style="display:none;margin-top:8px;background:var(--teal-lite);border-color:rgba(14,140,134,.4)"></div>
+      <div class="dq" id="dq" style="display:none"></div>
+      <div class="vrows" id="vrows"></div>
     </div>
     <div class="topper-field">
       Target top speed for this <b id="mf-diff">Medium</b> passage:
@@ -267,6 +289,13 @@
     </div>
     <div class="res-grid" id="res-grid"></div>
     <p class="tip" id="tip"></p>
+    <button class="btn-review" id="btn-review">Review mistakes ▾</button>
+    <div class="review" id="review" style="display:none">
+      <div class="review-cols">
+        <div class="rev-col"><div class="rev-h">Original passage</div><div class="rev-body" id="rev-orig"></div></div>
+        <div class="rev-col"><div class="rev-h">What you typed</div><div class="rev-body" id="rev-typed"></div></div>
+      </div>
+    </div>
     <div class="modal-foot">
       <button class="btn-ghost" id="btn-again">Retry same passage</button>
       <button class="btn-primary" id="btn-next">Next passage</button>
@@ -326,8 +355,8 @@ function buildCurrent(name,src,text){
 }
 
 /* ===== state ===== */
-let started=false,finished=false,startTs=0,durSec=600,remaining=600,tick=null,chars=[];
-let bestNet=0, formalIdx=0, calib=0, benchmark=0;
+let started=false,finished=false,startTs=0,durSec=600,remaining=600,tick=null,wordSpans=[],passageWords=[];
+let bestNet=0, formalIdx=0, calib=0, benchmark=0, passCutoff=10;
 let current={name:"",src:"",text:"",diff:"Medium",autoTop:60,top:60};
 
 /* ===== source selector ===== */
@@ -425,13 +454,13 @@ function renderPassage(){
   $("p-len").textContent=words(current.text).length+" words";
   const d=$("p-diff"); d.textContent=current.diff; d.className="diff "+current.diff;
   $("topper-inline").value=current.top;
-  passageEl.innerHTML=""; chars=[];
-  for(const c of current.text){
-    const s=document.createElement("span");
-    s.className="ch"+(c===" "?" space":""); s.textContent=c;
-    passageEl.appendChild(s); chars.push(s);
-  }
-  if(chars[0]) chars[0].classList.add("cur");
+  passageEl.innerHTML=""; wordSpans=[]; passageWords=current.text.split(" ");
+  passageWords.forEach((w,idx)=>{
+    const s=document.createElement("span"); s.className="w"; s.textContent=w;
+    passageEl.appendChild(s); wordSpans.push(s);
+    if(idx<passageWords.length-1) passageEl.appendChild(document.createTextNode(" "));
+  });
+  paint();
   passageEl.scrollTop=0;
 }
 
@@ -476,23 +505,33 @@ input.addEventListener("keydown",e=>{
 });
 input.addEventListener("paste",e=>e.preventDefault());
 input.addEventListener("drop",e=>e.preventDefault());
-input.addEventListener("input",()=>{ if(!started) return; paint(); updateStats(); if(input.value.length>=chars.length) finishTest(); });
+input.addEventListener("input",()=>{ if(!started) return; paint(); updateStats(); if(input.value.length>=current.text.length) finishTest(); });
 
 function paint(){
-  const t=input.value, n=chars.length;
-  for(let i=0;i<n;i++){
-    const s=chars[i]; s.classList.remove("done","wrong","cur");
-    if(i<t.length){ s.classList.add(t[i]===s.textContent?"done":"wrong"); }
-    else if(i===t.length){ s.classList.add("cur"); }
-  }
+  const parts=input.value.split(" ");
+  const curIdx=parts.length-1;
+  for(let k=0;k<wordSpans.length;k++){ wordSpans[k].className=(k===curIdx?"w cur":"w"); }  // passage: only current word blue
   autoScroll();
 }
+function esc(s){ return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function buildComparison(typed){
+  const P=passageWords, T=typed.trim().length?typed.trim().split(/\s+/):[];
+  const n=Math.max(P.length,T.length);
+  let o="",ty="";
+  for(let k=0;k<n;k++){
+    const p=P[k], t=T[k];
+    const bad = p===undefined || t===undefined || t!==p;
+    if(p!==undefined) o += (bad?`<span class="missp">${esc(p)}</span>`:esc(p))+" ";
+    if(t!==undefined) ty += (bad?`<span class="miss">${esc(t)}</span>`:esc(t))+" ";
+  }
+  return {origHtml:o.trim(), typedHtml:ty.trim()||'<span style="color:#9aa7b0">(nothing typed)</span>'};
+}
 function autoScroll(){
-  const ref=passageEl.querySelector(".ch.cur")||chars[Math.min(input.value.length,chars.length-1)];
+  const ref=passageEl.querySelector(".w.cur")||wordSpans[wordSpans.length-1];
   if(!ref) return;
   const lh=parseFloat(getComputedStyle(passageEl).lineHeight)||39;
-  const target=Math.max(0, ref.offsetTop - lh*2);   // keep current line ~3rd from top; earlier lines scroll away
-  passageEl.scrollTop=target;
+  passageEl.scrollTop=Math.max(0, ref.offsetTop - lh*2);   // keep current word ~3rd line; earlier lines scroll away
+
 }
 
 /* ===== stats ===== */
@@ -558,29 +597,36 @@ function renderTime(){
 }
 
 /* ===== results ===== */
+function vrowHtml(label, marks, cutoff, pass, ref){
+  return `<div class="vrow ${pass?'q':'nq'}">
+    <span class="vlabel">${label} <small>÷ ${ref}</small></span>
+    <span class="vmarks">${marks.toFixed(1)} / 20 <small>need ${cutoff}</small></span>
+    <span class="vbadge">${pass?'PASS':'FAIL'}</span>
+  </div>`;
+}
+function renderVerdict(s){
+  const cutoff=passCutoff;
+  const floorOK = s.acc>=90 && s.net>=35;
+  const top=Math.max(1,parseFloat($("topper").value)||current.top);
+  const mApp=Math.min(20,(s.net/top)*20);
+  const mBm = benchmark>0 ? Math.min(20,(s.net/benchmark)*20) : null;
+  const passApp = floorOK && mApp>=cutoff;
+  const passBm = mBm!=null ? (floorOK && mBm>=cutoff) : null;
+  const dq=$("dq");
+  if(!floorOK){
+    const r=[]; if(s.net<35)r.push(`net ${Math.round(s.net)} < 35 WPM`); if(s.acc<90)r.push(`accuracy ${s.acc.toFixed(1)}% < 90%`);
+    dq.style.display="block"; dq.innerHTML=`⚠ Disqualified — ${r.join(" and ")}. Below the exam floor, marks don't count.`;
+  } else dq.style.display="none";
+  const rows=[ vrowHtml("Marks vs app target", mApp, cutoff, passApp, Math.round(top)) ];
+  if(mBm!=null) rows.push(vrowHtml("Marks vs exam benchmark", mBm, cutoff, passBm, Math.round(benchmark)));
+  $("vrows").innerHTML=rows.join("");
+  return {mApp,mBm,passApp,passBm};
+}
 async function showResults(s){
-  const q=s.net>=35 && s.acc>=90;
-  const v=$("verdict"), sub=$("verdict-sub");
-  if(q){ v.className="verdict q"; v.innerHTML='<span class="ico">✓</span> Qualified'; sub.textContent="You cleared both the speed and accuracy bars. Keep building your buffer above 35 WPM."; }
-  else{
-    v.className="verdict nq"; v.innerHTML='<span class="ico">✕</span> Not qualified';
-    const r=[]; if(s.net<35)r.push(`net speed ${Math.round(s.net)} WPM is below 35`); if(s.acc<90)r.push(`accuracy ${s.acc.toFixed(1)}% is below 90%`);
-    sub.textContent="This attempt falls short: "+r.join(" and ")+". In the real test this means disqualification.";
-  }
   $("mf-diff").textContent=current.diff;
   $("topper").value=current.top;
-  let lastMarks=0, lastB=null;
-  const renderMarks=()=>{
-    const top=Math.max(1,parseFloat($("topper").value)||current.top);
-    lastMarks=Math.min(20,(s.net/top)*20);
-    $("marks-line").innerHTML=`Marks vs app target: <b>${lastMarks.toFixed(1)} / 20</b> &nbsp;·&nbsp; (net ${Math.round(s.net)} ÷ target ${Math.round(top)}) × 20`;
-    const bl=$("marks-line-b");
-    if(benchmark>0){
-      lastB=Math.min(20,(s.net/benchmark)*20);
-      bl.style.display="inline-block";
-      bl.innerHTML=`Marks vs real exam benchmark: <b>${lastB.toFixed(1)} / 20</b> &nbsp;·&nbsp; (net ${Math.round(s.net)} ÷ benchmark ${Math.round(benchmark)}) × 20`;
-    } else { lastB=null; bl.style.display="none"; }
-  };
+  let V={mApp:0,mBm:null,passApp:false,passBm:null};
+  const renderMarks=()=>{ V=renderVerdict(s); };
   renderMarks();
   $("topper").oninput=()=>{ const val=Math.max(1,parseFloat($("topper").value)||current.top); current.top=clampTop(val); $("topper-inline").value=current.top; renderMarks(); };
 
@@ -604,8 +650,11 @@ async function showResults(s){
   else tip="<b>Strong result.</b> Well past qualifying. Keep accuracy near-perfect under timed conditions.";
   $("tip").innerHTML=tip;
 
+  const cmp=buildComparison(input.value);
+  $("rev-orig").innerHTML=cmp.origHtml; $("rev-typed").innerHTML=cmp.typedHtml;
+  $("review").style.display="none"; $("btn-review").textContent="Review mistakes ▾";
   if(s.net>bestNet){ bestNet=s.net; $("best-val").textContent=Math.round(bestNet)+" wpm"; store.set("jk_best",Math.round(bestNet)); }
-  recordAttempt(s, q, lastMarks, lastB);
+  recordAttempt(s, V);
   $("overlay").classList.add("show");
 }
 function closeModal(){ $("overlay").classList.remove("show"); }
@@ -626,9 +675,11 @@ $("topper-inline").addEventListener("input",()=>{
 
 /* ===== attempt history (localStorage) ===== */
 function loadHistory(){ try{ return JSON.parse(store.get("jk_history")||"[]"); }catch(e){ return []; } }
-function recordAttempt(s,qualified,marks,bmarks){
+function recordAttempt(s,V){
   const h=loadHistory();
-  h.unshift({t:Date.now(),net:Math.round(s.net),acc:+s.acc.toFixed(1),gross:Math.round(s.gross),err:s.errors,diff:current.diff,top:current.top,marks:+marks.toFixed(1),bmarks:bmarks!=null?+bmarks.toFixed(1):null,q:qualified,src:current.src.replace(/^—\s*/,"")});
+  h.unshift({t:Date.now(),net:Math.round(s.net),acc:+s.acc.toFixed(1),gross:Math.round(s.gross),diff:current.diff,
+    mApp:+V.mApp.toFixed(1), mBm:V.mBm!=null?+V.mBm.toFixed(1):null,
+    passApp:V.passApp, passBm:V.passBm, cutoff:passCutoff, src:current.src.replace(/^—\s*/,"")});
   while(h.length>40) h.pop();
   store.set("jk_history",JSON.stringify(h));
   renderHistory();
@@ -639,12 +690,17 @@ function renderHistory(){
   box.style.display="block";
   rows.innerHTML=h.slice(0,8).map(a=>{
     const d=new Date(a.t), when=d.toLocaleDateString(undefined,{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
-    const short=a.src.length>34?a.src.slice(0,32)+"…":a.src;
-    const mk=a.bmarks!=null?`${a.bmarks}<span style="opacity:.6">/20 vs bm</span>`:`${a.marks}<span style="opacity:.6">/20</span>`;
+    const mApp=a.mApp!=null?a.mApp:(a.marks!=null?a.marks:0);
+    const mBm=a.mBm!=null?a.mBm:(a.bmarks!=null?a.bmarks:null);
+    const passApp=a.passApp!=null?a.passApp:!!a.q;
+    const passBm=a.passBm!=null?a.passBm:null;
+    const mk = mBm!=null?`${mApp}/${mBm}`:`${mApp}`;
+    const bA=`<span class="hbadge ${passApp?'q':'nq'}">A ${passApp?'✓':'✗'}</span>`;
+    const bB=passBm!=null?`<span class="hbadge ${passBm?'q':'nq'}">B ${passBm?'✓':'✗'}</span>`:"";
     return `<div class="hrow">
       <span class="when">${when}</span>
-      <span class="meta"><b>${a.net}</b> net · <b>${a.acc}%</b> · <b>${mk}</b> · <span class="diffdot ${a.diff}">${a.diff}</span> · ${short}</span>
-      <span class="verd ${a.q?'q':'nq'}">${a.q?'PASS':'FAIL'}</span>
+      <span class="meta"><b>${a.net}</b> net · <b>${a.acc}%</b> · marks <b>${mk}</b>/20 · <span class="diffdot ${a.diff}">${a.diff}</span></span>
+      <span class="hbadges">${bA}${bB}</span>
     </div>`;
   }).join("");
 }
@@ -657,9 +713,11 @@ $("btn-new").onclick=()=>{ armIdle(); makePassage(); };
 $("src").onchange=()=>{ if(!started){ armIdle(); makePassage(); } };
 $("smode").onchange=()=>store.set("jk_smode",$("smode").value);
 $("benchmark").addEventListener("input",()=>{ const v=parseFloat($("benchmark").value); benchmark=(!isNaN(v)&&v>0)?clampTop(v):0; store.set("jk_benchmark",benchmark); });
+$("cutoff").addEventListener("input",()=>{ const v=parseFloat($("cutoff").value); passCutoff=!isNaN(v)?Math.max(0,Math.min(20,v)):10; store.set("jk_cutoff",passCutoff); });
 $("dur").onchange=e=>{ if(!started){ durSec=remaining=parseInt(e.target.value,10); renderTime(); } };
 $("btn-again").onclick=()=>{ closeModal(); armIdle(); renderPassage(); setTimeout(startTest,120); };
 $("btn-next").onclick=()=>{ closeModal(); armIdle(); makePassage(); };
+$("btn-review").onclick=()=>{ const r=$("review"); const open=r.style.display!=="none"; r.style.display=open?"none":"block"; $("btn-review").textContent=open?"Review mistakes ▾":"Hide comparison ▴"; };
 $("overlay").addEventListener("click",e=>{ if(e.target.id==="overlay") closeModal(); });
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeModal(); });
 passageEl.addEventListener("click",()=>{ if(started) input.focus(); });
@@ -669,6 +727,7 @@ passageEl.addEventListener("click",()=>{ if(started) input.focus(); });
   const cb=store.get("jk_calib"); if(cb!=null){ const v=parseFloat(cb); if(!isNaN(v)) calib=v; }
   const sm=store.get("jk_smode"); if(sm){ $("smode").value=sm; }
   const bm=store.get("jk_benchmark"); if(bm!=null){ const v=parseFloat(bm); if(!isNaN(v)&&v>0){ benchmark=v; $("benchmark").value=v; } }
+  const co=store.get("jk_cutoff"); if(co!=null){ const v=parseFloat(co); if(!isNaN(v)){ passCutoff=v; $("cutoff").value=v; } }
   durSec=remaining=600;
   $("src").value="mix";            // start offline/instant; user can pick a live source
   await makePassage(); syncCalib(); renderTime(); resetHud(); renderHistory();
