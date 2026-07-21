@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JK TypeTest — JKSSB Junior Assistant Typing Practice</title>
+<title>Typester — JKSSB Junior Assistant Typing Practice</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -703,8 +703,9 @@ function vrowHtml(label, marks, cutoff, pass, ref){
 function renderVerdict(s){
   const cutoff=passCutoff;
   const floorOK = s.acc>=90 && s.net>=35;
-  const top=Math.max(1,parseFloat($("topper").value)||current.top);
-  const mApp=Math.min(20,(s.net/top)*20);
+  const rawTop=Math.max(1,parseFloat($("topper").value)||current.top);
+  const appDenom = benchmark>0 ? Math.round((rawTop+benchmark)/2) : rawTop;  // app score blends app estimate with benchmark
+  const mApp=Math.min(20,(s.net/appDenom)*20);
   const mBm = benchmark>0 ? Math.min(20,(s.net/benchmark)*20) : null;
   const passApp = floorOK && mApp>=cutoff;
   const passBm = mBm!=null ? (floorOK && mBm>=cutoff) : null;
@@ -713,7 +714,8 @@ function renderVerdict(s){
     const r=[]; if(s.net<35)r.push(`net ${Math.round(s.net)} < 35 WPM`); if(s.acc<90)r.push(`accuracy ${s.acc.toFixed(1)}% < 90%`);
     dq.style.display="block"; dq.innerHTML=`⚠ Disqualified — ${r.join(" and ")}. Below the exam floor, marks don't count.`;
   } else dq.style.display="none";
-  const rows=[ vrowHtml("Marks vs app target", mApp, cutoff, passApp, Math.round(top)) ];
+  const appLabel = benchmark>0 ? "Marks vs app score (app + benchmark avg)" : "Marks vs app target";
+  const rows=[ vrowHtml(appLabel, mApp, cutoff, passApp, appDenom) ];
   if(mBm!=null) rows.push(vrowHtml("Marks vs exam benchmark", mBm, cutoff, passBm, Math.round(benchmark)));
   $("vrows").innerHTML=rows.join("");
   return {mApp,mBm,passApp,passBm};
