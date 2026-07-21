@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Typester — JKSSB Junior Assistant Typing Practice</title>
+<title>JK TypeTest — JKSSB Junior Assistant Typing Practice</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -394,7 +394,19 @@ function estimateTop(text){
 }
 function labelFor(top){ return top>=65?"Easy":top>=55?"Medium":"Hard"; }
 function clampTop(v){ return Math.max(20,Math.min(140,Math.round(v))); }
+function normalizeText(t){
+  if(!t) return "";
+  t=t.replace(/\s+/g," ");                             // collapse all whitespace to single spaces
+  t=t.replace(/\s+([,.;:!?])/g,"$1");                  // remove space BEFORE punctuation ("word ," -> "word,")
+  t=t.replace(/\s+('(?:s|t|re|ve|ll|d|m)\b)/gi,"$1");  // "India 's" -> "India's", "do n't" -> "don't"
+  t=t.replace(/([,;:])(?=[A-Za-z])/g,"$1 ");           // ensure single space AFTER , ; : before a letter
+  t=t.replace(/([.!?])(?=[A-Za-z])/g,"$1 ");           // ensure single space after . ! ? before a letter (keeps 7.2%, 3,000)
+  t=t.replace(/\(\s+/g,"(").replace(/\s+\)/g,")");     // tidy brackets
+  t=t.replace(/\s{2,}/g," ").trim();
+  return t;
+}
 function buildCurrent(name,src,text,forcedDiff){
+  text=normalizeText(text);
   const autoTop=estimateTop(text);
   return {name,src,text,autoTop,top:clampTop(autoTop+calib),diff:forcedDiff||labelFor(autoTop)};
 }
