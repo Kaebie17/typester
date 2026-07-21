@@ -234,6 +234,14 @@
         <select id="src"></select>
       </div>
       <div class="field">
+        <label for="diff">Difficulty</label>
+        <select id="diff">
+          <option value="Easy">Easy (short)</option>
+          <option value="Medium" selected>Medium</option>
+          <option value="Hard">Hard (long)</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="dur">Duration</label>
         <select id="dur">
           <option value="600" selected>10 min (exam)</option>
@@ -298,7 +306,7 @@
   </div>
 
   <footer class="foot">
-    <b>Offline (default):</b> original exam-style passages on administration, environment, technology and social-awareness topics — the register real JKSSB passages use. <b>Live sources</b> (India &amp; current affairs, Jammu &amp; Kashmir) stream topic text from Wikipedia in your browser; they need internet and fall back to an exam-style passage if blocked. Newspaper articles are copyrighted, so they aren't included — the live Wikipedia topics cover the same current-affairs and state ground legally.<br>
+    <b>Difficulty</b> is your choice and sets passage length (short / medium / long). <b>India news (live)</b> streams freely-licensed news from Wikinews and <b>India topics / J&amp;K</b> stream from Wikipedia — all fetched in your browser, India-focused, unlimited, with an exam-style offline fallback. Copyrighted newspaper or blog articles can’t be bundled, but you can paste any into <b>My passages</b>. Newspaper articles are copyrighted, so they aren't included — the live Wikipedia topics cover the same current-affairs and state ground legally.<br>
     There is no error feedback while you type (as in the real exam) — the passage only underlines the current word in blue. After the test, open <b>Review mistakes</b> for a side-by-side comparison of the passage and what you typed, with wrong words marked. Scoring is word-by-word. <b>TypingMaster mode (default)</b> — the software JKSSB reportedly uses — counts every mismatched word as one full error (a wrong letter, a capital, or a spacing slip each spoil the whole word); Net WPM = Gross − (wrong words ÷ minutes). <b>Full/Half mode</b> is the SSC/UPSSSC convention where capitalization, punctuation, transposition and spacing count as ½ mistakes. The exact internal method JKSSB uses isn't officially published, so both are provided as close estimates — pick whichever your coaching material describes. Gross = (keystrokes ÷ 5) ÷ minutes; test is ~10 minutes; accuracy below 90% disqualifies; backspace only fixes the current word and carries no direct penalty. Marks = (net ÷ target top speed) × 20. If you enter the <b>exam benchmark</b> (the real highest net speed reported in the ongoing exam), the result also shows marks against that real figure — the closest estimate to your actual batch-relative score. Verify against the official JKSSB notification.
   </footer>
 </div>
@@ -386,9 +394,9 @@ function estimateTop(text){
 }
 function labelFor(top){ return top>=65?"Easy":top>=55?"Medium":"Hard"; }
 function clampTop(v){ return Math.max(20,Math.min(140,Math.round(v))); }
-function buildCurrent(name,src,text){
+function buildCurrent(name,src,text,forcedDiff){
   const autoTop=estimateTop(text);
-  return {name,src,text,autoTop,top:clampTop(autoTop+calib),diff:labelFor(autoTop)};
+  return {name,src,text,autoTop,top:clampTop(autoTop+calib),diff:forcedDiff||labelFor(autoTop)};
 }
 
 /* ===== state ===== */
@@ -401,9 +409,10 @@ let current={name:"",src:"",text:"",diff:"Medium",autoTop:60,top:60};
   const s=$("src");
   const opts=[
     ["exam","Exam-style passages (mixed)"],
-    ["custom","My passages (paste past papers)"],
-    ["wiki-india","India & current affairs (live)"],
-    ["wiki-jk","Jammu & Kashmir (live)"]
+    ["news-india","India news (live)"],
+    ["wiki-india","India topics & GK (live)"],
+    ["wiki-jk","Jammu & Kashmir (live)"],
+    ["custom","My passages (paste past papers)"]
   ];
   opts.forEach(([v,l])=>{const o=document.createElement("option");o.value=v;o.textContent=l;s.appendChild(o);});
 })();
@@ -412,7 +421,7 @@ let current={name:"",src:"",text:"",diff:"Medium",autoTop:60,top:60};
 const WIKI_INDIA=["Constitution of India","Parliament of India","Fundamental rights in India","Directive Principles","Election Commission of India","Reserve Bank of India","Goods and Services Tax (India)","Union budget of India","Economy of India","Digital India","Make in India","Panchayati raj (India)","Indian Administrative Service","Supreme Court of India","President of India","Prime Minister of India","National Education Policy 2020","Indian Space Research Organisation","Chandrayaan-3","Sustainable Development Goals","Climate change in India","Renewable energy in India","Public distribution system","Ayushman Bharat Yojana","Swachh Bharat Mission","G20","National Green Tribunal","Right to Information Act, 2005","Census of India","Geography of India","Monsoon of India","Ganges","Himalayas","Agriculture in India","Startup India","Aadhaar","Unified Payments Interface"];
 const WIKI_JK=["Jammu and Kashmir","Kashmir","Jammu","Srinagar","Ladakh","Dal Lake","Wular Lake","Chenab River","Jhelum River","Pir Panjal Range","Zanskar","Amarnath Temple","Vaishno Devi","Dogra dynasty","Tourism in Jammu and Kashmir","Kashmir Valley","Gulmarg","Pahalgam","Sonamarg","Kashmiri cuisine","Pashmina","Saffron","Jammu and Kashmir Reorganisation Act, 2019","Economy of Jammu and Kashmir","Dachigam National Park","Hemis National Park","Chinar"];
 
-function cleanWiki(ex){
+function cleanWiki(ex,target){
   let t=ex.replace(/\r/g,"\n");
   t=t.split("\n").filter(l=>!/^\s*=+.*=+\s*$/.test(l)).join(" ");     // drop == headings ==
   t=t.replace(/[\u201c\u201d]/g,'"').replace(/[\u2018\u2019]/g,"'").replace(/\u2014/g,", ").replace(/\u2013/g,"-");
@@ -425,10 +434,10 @@ function cleanWiki(ex){
   if(!good.length) return "";
   const start=Math.floor(Math.random()*Math.max(1,good.length-18));
   const out=[]; let wc=0,i=start;
-  while(i<good.length && wc<340){ out.push(good[i]); wc+=good[i].split(/\s+/).length; i++; }
+  while(i<good.length && wc<(target||320)){ out.push(good[i]); wc+=good[i].split(/\s+/).length; i++; }
   return out.join(" ");
 }
-async function fetchWiki(list){
+async function fetchWiki(list,target){
   for(let a=0;a<4;a++){
     const title=list[Math.floor(Math.random()*list.length)];
     try{
@@ -436,11 +445,37 @@ async function fetchWiki(list){
       const r=await fetch(url); if(!r.ok) continue;
       const j=await r.json(); const page=Object.values(j.query.pages)[0];
       if(!page||!page.extract) continue;
-      const text=cleanWiki(page.extract);
-      if(words(text).length>=170) return {title, text};
+      const text=cleanWiki(page.extract,target);
+      if(words(text).length>=120) return {title, text, site:"Wikipedia"};
     }catch(e){ /* try another / bail to fallback */ }
   }
   return null;
+}
+async function fetchWikinews(target){
+  try{
+    const catUrl="https://en.wikinews.org/w/api.php?action=query&format=json&origin=*&list=categorymembers&cmtitle=Category:India&cmnamespace=0&cmsort=timestamp&cmdir=desc&cmlimit=40";
+    const cr=await fetch(catUrl); if(!cr.ok) return null;
+    const cj=await cr.json();
+    const members=((cj.query&&cj.query.categorymembers)||[]).map(m=>m.title).filter(x=>x&&x.indexOf(":")<0);
+    if(!members.length) return null;
+    for(let a=0;a<5;a++){
+      const title=members[Math.floor(Math.random()*members.length)];
+      const url="https://en.wikinews.org/w/api.php?action=query&format=json&origin=*&prop=extracts&explaintext=1&redirects=1&titles="+encodeURIComponent(title);
+      const r=await fetch(url); if(!r.ok) continue;
+      const j=await r.json(); const page=Object.values(j.query.pages)[0];
+      if(!page||!page.extract) continue;
+      const text=cleanWiki(page.extract,target);
+      if(words(text).length>=110) return {title, text, site:"Wikinews"};
+    }
+  }catch(e){}
+  return null;
+}
+function targetWords(d){ return d==="Easy"?180:d==="Hard"?400:300; }
+function trimTo(text,n){
+  const sents=text.match(/[^.!?]+[.!?]+/g)||[text];
+  let out="",wc=0;
+  for(const s of sents){ out+=s; wc+=s.trim().split(/\s+/).length; if(wc>=n) break; }
+  return out.trim()||text;
 }
 function setLoading(on,msg){
   $("btn-start").disabled=on; $("btn-new").disabled=on; $("src").disabled=on;
@@ -453,22 +488,24 @@ function showNote(txt){ const n=$("note"); n.textContent=txt; n.style.display="i
 let lastExam=-1;
 function pickExam(){ let i; do{ i=Math.floor(Math.random()*EXAM.length); }while(EXAM.length>1 && i===lastExam); lastExam=i; return EXAM[i]; }
 async function makePassage(){
-  const key=$("src").value;
-  if(key==="wiki-india"||key==="wiki-jk"){
+  const key=$("src").value, diff=$("diff").value, target=targetWords(diff);
+  if(key==="news-india"||key==="wiki-india"||key==="wiki-jk"){
     setLoading(true);
-    const res=await fetchWiki(key==="wiki-jk"?WIKI_JK:WIKI_INDIA);
+    let res;
+    if(key==="news-india") res=await fetchWikinews(target);
+    else res=await fetchWiki(key==="wiki-jk"?WIKI_JK:WIKI_INDIA, target);
     setLoading(false);
-    if(res){ current=buildCurrent("Passage","— "+res.title+" · Wikipedia",res.text); renderPassage(); return; }
-    const p=pickExam(); current=buildCurrent("Exam-style","— "+p.topic+" (offline fallback)",p.text);
-    renderPassage(); showNote("Couldn't reach Wikipedia — offline or blocked here. Using an exam-style passage. Live sources work best when you open the file in your own browser.");
+    if(res){ current=buildCurrent("Passage","— "+res.title+" · "+res.site, res.text, diff); renderPassage(); return; }
+    const fp=pickExam(); current=buildCurrent("Exam-style","— "+fp.topic+" (offline fallback)", trimTo(fp.text,target), diff);
+    renderPassage(); showNote("Couldn't reach the live source — offline or blocked here. Using an offline passage. Live sources work best when you open the file in your own browser.");
     return;
   }
   if(key==="custom"){
-    if(customPassages.length){ const c=customPassages[Math.floor(Math.random()*customPassages.length)]; current=buildCurrent("My passage","— "+(c.topic||"custom"),c.text); }
-    else { const p=pickExam(); current=buildCurrent("Exam-style","— "+p.topic,p.text); showNote("No saved passages yet — add them under 'My passages' below, then pick this source. Using an exam-style passage for now."); }
+    if(customPassages.length){ const c=customPassages[Math.floor(Math.random()*customPassages.length)]; current=buildCurrent("My passage","— "+(c.topic||"custom"), trimTo(c.text,target), diff); }
+    else { const p=pickExam(); current=buildCurrent("Exam-style","— "+p.topic, trimTo(p.text,target), diff); showNote("No saved passages yet — add them under 'My passages' below. Using an exam-style passage for now."); }
     renderPassage(); return;
   }
-  const p=pickExam(); current=buildCurrent("Exam-style","— "+p.topic,p.text);
+  const p=pickExam(); current=buildCurrent("Exam-style","— "+p.topic, trimTo(p.text,target), diff);
   renderPassage();
 }
 
@@ -745,7 +782,8 @@ $("btn-start").onclick=startTest;
 $("btn-reset").onclick=resetTest;
 $("btn-finish").onclick=()=>{ if(started) finishTest(); };
 $("btn-new").onclick=()=>{ armIdle(); makePassage(); };
-$("src").onchange=()=>{ if(!started){ armIdle(); makePassage(); } };
+$("src").onchange=()=>{ store.set("jk_src",$("src").value); if(!started){ armIdle(); makePassage(); } };
+$("diff").onchange=()=>{ store.set("jk_diff",$("diff").value); if(!started){ armIdle(); makePassage(); } };
 $("smode").onchange=()=>store.set("jk_smode",$("smode").value);
 $("benchmark").addEventListener("input",()=>{ const v=parseFloat($("benchmark").value); benchmark=(!isNaN(v)&&v>0)?clampTop(v):0; store.set("jk_benchmark",benchmark); });
 $("cutoff").addEventListener("input",()=>{ const v=parseFloat($("cutoff").value); passCutoff=!isNaN(v)?Math.max(0,Math.min(20,v)):10; store.set("jk_cutoff",passCutoff); });
@@ -782,7 +820,9 @@ passageEl.addEventListener("click",()=>{ if(started) input.focus(); });
   try{ customPassages=JSON.parse(store.get("jk_custom")||"[]"); }catch(e){ customPassages=[]; }
   renderCustomList();
   durSec=remaining=600;
-  $("src").value="exam";           // exam-style passages by default
+  const validSrc=["exam","news-india","wiki-india","wiki-jk","custom"], ss=store.get("jk_src");
+  $("src").value = validSrc.includes(ss)?ss:"exam";
+  const sd=store.get("jk_diff"); if(["Easy","Medium","Hard"].includes(sd)) $("diff").value=sd;
   await makePassage(); syncCalib(); renderTime(); resetHud(); renderHistory();
   const b=store.get("jk_best"); if(b){ bestNet=parseFloat(b); $("best-val").textContent=Math.round(bestNet)+" wpm"; }
 })();
