@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JK TypeTest — JKSSB Junior Assistant Typing Practice</title>
+<title>Typester — JKSSB Junior Assistant Typing Practice</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -306,7 +306,7 @@
   </div>
 
   <footer class="foot">
-    <b>Difficulty</b> is your choice and sets passage length (short / medium / long). <b>India news (live)</b> streams freely-licensed news from Wikinews and <b>India topics / J&amp;K</b> stream from Wikipedia — all fetched in your browser, India-focused, unlimited, with an exam-style offline fallback. Copyrighted newspaper or blog articles can’t be bundled, but you can paste any into <b>My passages</b>. Newspaper articles are copyrighted, so they aren't included — the live Wikipedia topics cover the same current-affairs and state ground legally.<br>
+    <b>Difficulty</b> sets passage length around what a strong typist (the average of the app target and your benchmark) finishes in the test time — roughly 430 / 500 / 600 words for Easy / Medium / Hard over 10 minutes. Unfinished words carry no penalty and aren’t counted wrong; they simply don’t add to your net speed. <b>India news (live)</b> streams freely-licensed news from Wikinews and <b>India topics / J&amp;K</b> stream from Wikipedia — all fetched in your browser, India-focused, unlimited, with an exam-style offline fallback. Copyrighted newspaper or blog articles can’t be bundled, but you can paste any into <b>My passages</b>. Newspaper articles are copyrighted, so they aren't included — the live Wikipedia topics cover the same current-affairs and state ground legally.<br>
     There is no error feedback while you type (as in the real exam) — the passage only underlines the current word in blue. After the test, open <b>Review mistakes</b> for a side-by-side comparison of the passage and what you typed, with wrong words marked. Scoring is word-by-word. <b>TypingMaster mode (default)</b> — the software JKSSB reportedly uses — counts every mismatched word as one full error (a wrong letter, a capital, or a spacing slip each spoil the whole word); Net WPM = Gross − (wrong words ÷ minutes). <b>Full/Half mode</b> is the SSC/UPSSSC convention where capitalization, punctuation, transposition and spacing count as ½ mistakes. The exact internal method JKSSB uses isn't officially published, so both are provided as close estimates — pick whichever your coaching material describes. Gross = (keystrokes ÷ 5) ÷ minutes; test is ~10 minutes; accuracy below 90% disqualifies; backspace only fixes the current word and carries no direct penalty. Marks = (net ÷ target top speed) × 20. If you enter the <b>exam benchmark</b> (the real highest net speed reported in the ongoing exam), the result also shows marks against that real figure — the closest estimate to your actual batch-relative score. Verify against the official JKSSB notification.
   </footer>
 </div>
@@ -470,7 +470,20 @@ async function fetchWikinews(target){
   }catch(e){}
   return null;
 }
-function targetWords(d){ return d==="Easy"?180:d==="Hard"?400:300; }
+function targetWords(){
+  const dur=(durSec||600)/60, nominalTop=62;
+  const spd = benchmark>0 ? (nominalTop+benchmark)/2 : nominalTop;   // avg of app top speed & benchmark
+  const mult = ({Easy:0.85, Medium:1, Hard:1.18})[$("diff").value]||1;
+  return Math.max(380, Math.min(680, Math.round(spd*dur*0.82*mult))); // words a strong typist finishes in the time
+}
+function pickExamText(target){
+  let text="", topics=[], used=new Set();
+  while(words(text).length<target && used.size<EXAM.length){
+    let i; do{ i=Math.floor(Math.random()*EXAM.length); }while(used.has(i) && used.size<EXAM.length);
+    used.add(i); text+=(text?" ":"")+EXAM[i].text; topics.push(EXAM[i].topic);
+  }
+  return {text:trimTo(text,target), topic: topics.length>1?"mixed topics":(topics[0]||"exam")};
+}
 function trimTo(text,n){
   const sents=text.match(/[^.!?]+[.!?]+/g)||[text];
   let out="",wc=0;
@@ -488,7 +501,7 @@ function showNote(txt){ const n=$("note"); n.textContent=txt; n.style.display="i
 let lastExam=-1;
 function pickExam(){ let i; do{ i=Math.floor(Math.random()*EXAM.length); }while(EXAM.length>1 && i===lastExam); lastExam=i; return EXAM[i]; }
 async function makePassage(){
-  const key=$("src").value, diff=$("diff").value, target=targetWords(diff);
+  const key=$("src").value, diff=$("diff").value, target=targetWords();
   if(key==="news-india"||key==="wiki-india"||key==="wiki-jk"){
     setLoading(true);
     let res;
@@ -496,16 +509,16 @@ async function makePassage(){
     else res=await fetchWiki(key==="wiki-jk"?WIKI_JK:WIKI_INDIA, target);
     setLoading(false);
     if(res){ current=buildCurrent("Passage","— "+res.title+" · "+res.site, res.text, diff); renderPassage(); return; }
-    const fp=pickExam(); current=buildCurrent("Exam-style","— "+fp.topic+" (offline fallback)", trimTo(fp.text,target), diff);
+    const fp=pickExamText(target); current=buildCurrent("Exam-style","— "+fp.topic+" (offline fallback)", fp.text, diff);
     renderPassage(); showNote("Couldn't reach the live source — offline or blocked here. Using an offline passage. Live sources work best when you open the file in your own browser.");
     return;
   }
   if(key==="custom"){
     if(customPassages.length){ const c=customPassages[Math.floor(Math.random()*customPassages.length)]; current=buildCurrent("My passage","— "+(c.topic||"custom"), trimTo(c.text,target), diff); }
-    else { const p=pickExam(); current=buildCurrent("Exam-style","— "+p.topic, trimTo(p.text,target), diff); showNote("No saved passages yet — add them under 'My passages' below. Using an exam-style passage for now."); }
+    else { const p=pickExamText(target); current=buildCurrent("Exam-style","— "+p.topic, p.text, diff); showNote("No saved passages yet — add them under 'My passages' below. Using an exam-style passage for now."); }
     renderPassage(); return;
   }
-  const p=pickExam(); current=buildCurrent("Exam-style","— "+p.topic, trimTo(p.text,target), diff);
+  const p=pickExamText(target); current=buildCurrent("Exam-style","— "+p.topic, p.text, diff);
   renderPassage();
 }
 
