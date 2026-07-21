@@ -433,60 +433,84 @@ let current={name:"",src:"",text:"",diff:"Medium",autoTop:60,top:60};
 const WIKI_INDIA=["Constitution of India","Parliament of India","Fundamental rights in India","Directive Principles","Election Commission of India","Reserve Bank of India","Goods and Services Tax (India)","Union budget of India","Economy of India","Digital India","Make in India","Panchayati raj (India)","Indian Administrative Service","Supreme Court of India","President of India","Prime Minister of India","National Education Policy 2020","Indian Space Research Organisation","Chandrayaan-3","Sustainable Development Goals","Climate change in India","Renewable energy in India","Public distribution system","Ayushman Bharat Yojana","Swachh Bharat Mission","G20","National Green Tribunal","Right to Information Act, 2005","Census of India","Geography of India","Monsoon of India","Ganges","Himalayas","Agriculture in India","Startup India","Aadhaar","Unified Payments Interface"];
 const WIKI_JK=["Jammu and Kashmir","Kashmir","Jammu","Srinagar","Ladakh","Dal Lake","Wular Lake","Chenab River","Jhelum River","Pir Panjal Range","Zanskar","Amarnath Temple","Vaishno Devi","Dogra dynasty","Tourism in Jammu and Kashmir","Kashmir Valley","Gulmarg","Pahalgam","Sonamarg","Kashmiri cuisine","Pashmina","Saffron","Jammu and Kashmir Reorganisation Act, 2019","Economy of Jammu and Kashmir","Dachigam National Park","Hemis National Park","Chinar"];
 
-function cleanWiki(ex,target){
+function cleanSentences(ex){
   let t=ex.replace(/\r/g,"\n");
-  t=t.split("\n").filter(l=>!/^\s*=+.*=+\s*$/.test(l)).join(" ");     // drop == headings ==
+  t=t.split("\n").filter(l=>!/^\s*=+.*=+\s*$/.test(l)).join(" ");
   t=t.replace(/[\u201c\u201d]/g,'"').replace(/[\u2018\u2019]/g,"'").replace(/\u2014/g,", ").replace(/\u2013/g,"-");
-  t=t.replace(/\([^)]{0,60}\)/g," ").replace(/\s+/g," ");             // strip short parentheticals
+  t=t.replace(/\([^)]{0,80}\)/g," ").replace(/\s+/g," ");
+  const boiler=/\b(Reuters|Associated Press|Wikinews|Wikipedia|correspondent|file photo|copyright|rights reserved|Creative Commons|CC BY|External links|Related news|Retrieved|ISBN|http|www\.)\b/i;
+  const dateRe=/\b(Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day\b|\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d/i;
   const parts=t.split(/(?<=[.!?])\s+/), good=[];
   for(let p of parts){ p=p.trim();
     const w=p.split(/\s+/);
-    if(w.length>=5 && w.length<=42 && /^[A-Za-z]/.test(p) && /^[A-Za-z0-9 ,.;:'"!?()%\-]+$/.test(p)) good.push(p);
+    if(w.length<6||w.length>42) continue;
+    if(!/^[A-Za-z]/.test(p)) continue;
+    if(!/^[A-Za-z0-9 ,.;:'"!?()%\-]+$/.test(p)) continue;
+    if(boiler.test(p)||dateRe.test(p)) continue;   // drop wire-service / dateline lines
+    good.push(p);
   }
-  if(!good.length) return "";
-  const start=Math.floor(Math.random()*Math.max(1,good.length-18));
-  const out=[]; let wc=0,i=start;
-  while(i<good.length && wc<(target||320)){ out.push(good[i]); wc+=good[i].split(/\s+/).length; i++; }
+  return good;
+}
+function assembleMiddle(bodies,target){
+  let out=[], wc=0;
+  for(const sents of bodies){
+    if(!sents.length) continue;
+    const start=Math.floor(sents.length*0.30);      // skip the intro/dateline third
+    for(let i=start;i<sents.length && wc<target;i++){ out.push(sents[i]); wc+=sents[i].split(/\s+/).length; }
+    if(wc>=target) break;
+  }
+  if(wc<target){ for(const sents of bodies){ for(let i=0;i<sents.length && wc<target;i++){ if(out.indexOf(sents[i])<0){ out.push(sents[i]); wc+=sents[i].split(/\s+/).length; } } if(wc>=target) break; } }
   return out.join(" ");
 }
 async function fetchWiki(list,target){
-  for(let a=0;a<4;a++){
-    const title=list[Math.floor(Math.random()*list.length)];
+  const bodies=[]; let title="", wc=0, tries=0;
+  while(wc<target+30 && tries<10){
+    tries++;
+    const tt=list[Math.floor(Math.random()*list.length)];
     try{
-      const url="https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&prop=extracts&explaintext=1&redirects=1&titles="+encodeURIComponent(title);
+      const url="https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&prop=extracts&explaintext=1&redirects=1&titles="+encodeURIComponent(tt);
       const r=await fetch(url); if(!r.ok) continue;
       const j=await r.json(); const page=Object.values(j.query.pages)[0];
       if(!page||!page.extract) continue;
-      const text=cleanWiki(page.extract,target);
-      if(words(text).length>=120) return {title, text, site:"Wikipedia"};
-    }catch(e){ /* try another / bail to fallback */ }
+      const sents=cleanSentences(page.extract);
+      if(sents.length>=8){ bodies.push(sents); if(!title)title=tt; wc+=sents.slice(Math.floor(sents.length*0.30)).reduce((a,s)=>a+s.split(/\s+/).length,0); }
+    }catch(e){}
   }
+  const text=assembleMiddle(bodies,target);
+  if(words(text).length>=200) return {title, text, site:"Wikipedia"};
   return null;
 }
 async function fetchWikinews(target){
+  let members=[];
   try{
-    const catUrl="https://en.wikinews.org/w/api.php?action=query&format=json&origin=*&list=categorymembers&cmtitle=Category:India&cmnamespace=0&cmsort=timestamp&cmdir=desc&cmlimit=40";
+    const catUrl="https://en.wikinews.org/w/api.php?action=query&format=json&origin=*&list=categorymembers&cmtitle=Category:India&cmnamespace=0&cmsort=timestamp&cmdir=desc&cmlimit=50";
     const cr=await fetch(catUrl); if(!cr.ok) return null;
     const cj=await cr.json();
-    const members=((cj.query&&cj.query.categorymembers)||[]).map(m=>m.title).filter(x=>x&&x.indexOf(":")<0);
-    if(!members.length) return null;
-    for(let a=0;a<5;a++){
-      const title=members[Math.floor(Math.random()*members.length)];
-      const url="https://en.wikinews.org/w/api.php?action=query&format=json&origin=*&prop=extracts&explaintext=1&redirects=1&titles="+encodeURIComponent(title);
+    members=((cj.query&&cj.query.categorymembers)||[]).map(m=>m.title).filter(x=>x&&x.indexOf(":")<0);
+  }catch(e){ return null; }
+  if(!members.length) return null;
+  const bodies=[]; let title="", wc=0, tries=0;
+  while(wc<target+30 && tries<12){
+    tries++;
+    const tt=members[Math.floor(Math.random()*members.length)];
+    try{
+      const url="https://en.wikinews.org/w/api.php?action=query&format=json&origin=*&prop=extracts&explaintext=1&redirects=1&titles="+encodeURIComponent(tt);
       const r=await fetch(url); if(!r.ok) continue;
       const j=await r.json(); const page=Object.values(j.query.pages)[0];
       if(!page||!page.extract) continue;
-      const text=cleanWiki(page.extract,target);
-      if(words(text).length>=110) return {title, text, site:"Wikinews"};
-    }
-  }catch(e){}
+      const sents=cleanSentences(page.extract);
+      if(sents.length>=6){ bodies.push(sents); if(!title)title=tt; wc+=sents.slice(Math.floor(sents.length*0.30)).reduce((a,s)=>a+s.split(/\s+/).length,0); }
+    }catch(e){}
+  }
+  const text=assembleMiddle(bodies,target);
+  if(words(text).length>=200) return {title, text, site:"Wikinews"};
   return null;
 }
 function targetWords(){
   const dur=(durSec||600)/60, nominalTop=62;
   const spd = benchmark>0 ? (nominalTop+benchmark)/2 : nominalTop;   // avg of app top speed & benchmark
   const mult = ({Easy:0.85, Medium:1, Hard:1.18})[$("diff").value]||1;
-  return Math.max(380, Math.min(680, Math.round(spd*dur*0.82*mult))); // words a strong typist finishes in the time
+  return Math.max(400, Math.min(700, Math.round(spd*dur*0.82*mult))); // words a strong typist finishes in the time
 }
 function pickExamText(target){
   let text="", topics=[], used=new Set();
