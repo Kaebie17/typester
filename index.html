@@ -96,7 +96,7 @@
   .custom{margin-top:16px;background:var(--panel);border:1px solid var(--line-dk);border-radius:14px;overflow:hidden}
   .custom-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line-dk);font-family:var(--font-brand);font-weight:600;font-size:13px;color:#cfe0d9}
   .custom-body{padding:14px 18px;display:flex;flex-direction:column;gap:10px}
-  .custom-body input,.custom-body textarea{width:100%;font-family:var(--font-ui);font-size:13.5px;color:var(--ink);background:#fff;border:1.5px solid var(--line);border-radius:9px;padding:9px 12px}
+  .custom-body input,.custom-body textarea,.custom-body select{width:100%;font-family:var(--font-ui);font-size:13.5px;color:var(--ink);background:#fff;border:1.5px solid var(--line);border-radius:9px;padding:9px 12px}
   .custom-body textarea{min-height:90px;resize:vertical;font-family:var(--font-passage);line-height:1.6}
   .custom-body input:focus,.custom-body textarea:focus{outline:none;border-color:var(--teal)}
   .custom-actions{display:flex;align-items:center;gap:12px}
@@ -229,49 +229,21 @@
     </div>
 
     <div class="controls">
-      <div class="field">
-        <label for="src">Source</label>
-        <select id="src"></select>
-      </div>
-      <div class="field">
-        <label for="diff">Difficulty</label>
-        <select id="diff">
-          <option value="Easy">Easy (short)</option>
-          <option value="Medium" selected>Medium</option>
-          <option value="Hard">Hard (long)</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="dur">Duration</label>
-        <select id="dur">
-          <option value="600" selected>10 min (exam)</option>
-          <option value="300">5 min</option>
-          <option value="120">2 min</option>
-          <option value="60">1 min</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="bmode">Backspace</label>
-        <select id="bmode">
-          <option value="word" selected>Current word only (exam)</option>
-          <option value="free">Free</option>
-          <option value="none">Disabled</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="smode">Scoring</label>
-        <select id="smode">
-          <option value="typingmaster" selected>TypingMaster (JKSSB)</option>
-          <option value="fullhalf">Full / Half (SSC-style)</option>
-        </select>
+      <div class="field"><label for="topic">Source</label><select id="topic"></select></div>
+      <div class="field"><label for="date">Date</label><select id="date"><option value="__any">Any date</option></select></div>
+      <div class="field" style="flex:1;min-width:210px"><label for="article">Article (difficulty tagged)</label><select id="article"></select></div>
+      <div class="field"><label for="dur">Duration</label>
+        <select id="dur"><option value="600" selected>10 min (exam)</option><option value="300">5 min</option><option value="120">2 min</option><option value="60">1 min</option></select>
       </div>
       <div class="spacer"></div>
-      <button class="btn-ghost" id="btn-new">New passage</button>
+      <button class="btn-ghost" id="btn-load">Reload</button>
       <button class="btn-ghost" id="btn-finish" disabled>Finish</button>
       <button class="btn-ghost" id="btn-reset" disabled>Reset</button>
       <button class="btn-primary" id="btn-start">Start test</button>
     </div>
   </div>
+
+  <div class="art-msg" id="art-msg" style="margin-top:10px;color:#8ba0af;font-size:12.5px;min-height:16px"></div>
 
   <div class="subnote">
     <span class="pill" id="best"><span class="dot"></span>Best net: <b id="best-val">—</b></span>
@@ -306,7 +278,7 @@
   </div>
 
   <footer class="foot">
-    <b>Difficulty</b> sets passage length around what a strong typist (the average of the app target and your benchmark) finishes in the test time — roughly 430 / 500 / 600 words for Easy / Medium / Hard over 10 minutes. Unfinished words carry no penalty and aren’t counted wrong; they simply don’t add to your net speed. <b>India news (live)</b> streams freely-licensed news from Wikinews and <b>India topics / J&amp;K</b> stream from Wikipedia — all fetched in your browser, India-focused, unlimited, with an exam-style offline fallback. Copyrighted newspaper or blog articles can’t be bundled, but you can paste any into <b>My passages</b>. Newspaper articles are copyrighted, so they aren't included — the live Wikipedia topics cover the same current-affairs and state ground legally.<br>
+    <b>Difficulty</b> sets passage length around what a strong typist (the average of the app target and your benchmark) finishes in the test time — roughly 430 / 500 / 600 words for Easy / Medium / Hard over 10 minutes. Unfinished words carry no penalty and aren’t counted wrong; they simply don’t add to your net speed. <b>The Conversation</b> streams full India-edition articles (CC BY-ND) via a public proxy; <b>India news</b> streams freely-licensed news from Wikinews and <b>India topics / J&amp;K</b> stream from Wikipedia — all fetched in your browser, India-focused, unlimited, with an exam-style offline fallback. Copyrighted newspaper or blog articles can’t be bundled, but you can paste any into <b>My passages</b>. Newspaper articles are copyrighted, so they aren't included — the live Wikipedia topics cover the same current-affairs and state ground legally.<br>
     There is no error feedback while you type (as in the real exam) — the passage only underlines the current word in blue. After the test, open <b>Review mistakes</b> for a side-by-side comparison of the passage and what you typed, with wrong words marked. Scoring is word-by-word. <b>TypingMaster mode (default)</b> — the software JKSSB reportedly uses — counts every mismatched word as one full error (a wrong letter, a capital, or a spacing slip each spoil the whole word); Net WPM = Gross − (wrong words ÷ minutes). <b>Full/Half mode</b> is the SSC/UPSSSC convention where capitalization, punctuation, transposition and spacing count as ½ mistakes. The exact internal method JKSSB uses isn't officially published, so both are provided as close estimates — pick whichever your coaching material describes. Gross = (keystrokes ÷ 5) ÷ minutes; test is ~10 minutes; accuracy below 90% disqualifies; backspace only fixes the current word and carries no direct penalty. Marks = (net ÷ target top speed) × 20. If you enter the <b>exam benchmark</b> (the real highest net speed reported in the ongoing exam), the result also shows marks against that real figure — the closest estimate to your actual batch-relative score. Verify against the official JKSSB notification.
   </footer>
 </div>
@@ -417,21 +389,89 @@ let bestNet=0, calib=0, benchmark=0, passCutoff=10, customPassages=[];
 let current={name:"",src:"",text:"",diff:"Medium",autoTop:60,top:60};
 
 /* ===== source selector ===== */
-(function fillSources(){
-  const s=$("src");
-  const opts=[
-    ["exam","Exam-style passages (mixed)"],
-    ["news-india","India news (live)"],
-    ["wiki-india","India topics & GK (live)"],
-    ["wiki-jk","Jammu & Kashmir (live)"],
-    ["custom","My passages (paste past papers)"]
-  ];
-  opts.forEach(([v,l])=>{const o=document.createElement("option");o.value=v;o.textContent=l;s.appendChild(o);});
-})();
+const SOURCES={
+  conversation:{kind:"atom", feeds:["https://theconversation.com/in/articles.atom"], site:"The Conversation"},
+  mongabay:{kind:"rss", feeds:["https://india.mongabay.com/feed/"], site:"Mongabay India"},
+  pib:{kind:"pib", feeds:["https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=1"], site:"PIB"}
+};
+let articles=[];
+(function fillSourceSel(){ const s=$("topic"); [["all","All 3 live sources"],["conversation","The Conversation"],["mongabay","Mongabay India"],["pib","PIB (govt)"],["exam","Exam-style (offline)"],["custom","My passages (offline)"]].forEach(([v,l])=>{const o=document.createElement("option");o.value=v;o.textContent=l;s.appendChild(o);}); })();
+function diffLabel(text){ const w=(text.match(/[A-Za-z']+/g)||["x"]); const longr=w.filter(x=>x.length>6).length/w.length; const sents=(text.match(/[.!?]+/g)||[]).length||1; const idx=longr*100 + w.length/sents; return idx<40?"E":idx<48?"M":"H"; }
+function examArticles(){ return EXAM.map(p=>({title:p.topic, content:p.text, date:null, diff:diffLabel(p.text), site:"Exam-style"})); }
+async function loadFeed(feed, s){
+  const xml=await fetchViaProxy(feed); if(!xml) return [];
+  let doc; try{ doc=new DOMParser().parseFromString(xml,"text/xml"); }catch(e){ return []; }
+  const out=[];
+  if(s.kind==="atom"){
+    Array.from(doc.querySelectorAll("entry")).forEach(e=>{
+      const g=n=>{const x=e.querySelector(n);return x?x.textContent.trim():"";};
+      const cEl=e.querySelector("content")||e.querySelector("summary");
+      const content=htmlToText(cEl?cEl.textContent:""); const title=g("title"); if(!title) return;
+      const dt=g("published")||g("updated"); const d=dt?new Date(dt):null;
+      out.push({title, content, date:(d&&!isNaN(d))?d:null, diff:diffLabel(content||title), site:s.site});
+    });
+  } else {
+    Array.from(doc.querySelectorAll("item")).forEach(it=>{
+      const g=n=>{const x=it.querySelector(n);return x?x.textContent.trim():"";};
+      const enc=it.getElementsByTagName("content:encoded")[0]; const hasFull=!!(enc&&enc.textContent&&enc.textContent.length>400);
+      const content=htmlToText(hasFull?enc.textContent:g("description")); const title=g("title"); if(!title) return;
+      const dt=g("pubDate"); const d=dt?new Date(dt):null;
+      out.push({title, link:g("link"), content, date:(d&&!isNaN(d))?d:null, diff:(!hasFull&&s.kind==="pib")?("~"+diffLabel(content||title)):diffLabel(content||title), site:s.site, needsFetch:(s.kind==="pib"&&!hasFull)});
+    });
+  }
+  return out;
+}
+async function loadArticles(){
+  const sel=$("topic").value; store.set("jk_source",sel);
+  const msg=x=>{ $("art-msg").textContent=x; };
+  if(sel==="exam"){ articles=examArticles(); fillDateAndArticles(); msg(articles.length+" offline exam-style passages."); return; }
+  if(sel==="custom"){ articles=customPassages.map(p=>({title:p.topic||"custom", content:p.text, date:null, diff:diffLabel(p.text), site:"My passages"})); fillDateAndArticles(); msg(articles.length?articles.length+" of your saved passages.":"No saved passages yet \u2014 add them under My passages."); return; }
+  const keys = sel==="all" ? ["conversation","mongabay","pib"] : [sel];
+  setLoading(true); msg("Loading articles from "+keys.length+" source(s)\u2026");
+  const jobs=[]; keys.forEach(k=>SOURCES[k].feeds.forEach(f=>jobs.push(loadFeed(f, SOURCES[k]))));
+  let results=[]; try{ results=await Promise.all(jobs); }catch(e){ results=[]; }
+  setLoading(false);
+  articles=results.flat();
+  articles.sort((a,b)=>(b.date?b.date.getTime():0)-(a.date?a.date.getTime():0));
+  if(!articles.length){ articles=examArticles(); fillDateAndArticles(); msg("Couldn't reach the live sources (proxy) \u2014 showing offline passages."); return; }
+  fillDateAndArticles(); msg(articles.length+" articles loaded. Pick a date and title, then Start.");
+}
+function fillDateAndArticles(){
+  const dates=[...new Set(articles.map(a=>a.date?a.date.toDateString():"Undated"))];
+  const dsel=$("date"); dsel.innerHTML="";
+  const anyO=document.createElement("option"); anyO.value="__any"; anyO.textContent="Any date"; dsel.appendChild(anyO);
+  dates.forEach(ds=>{ const o=document.createElement("option"); o.value=ds; o.textContent=(ds==="Undated"?"Undated":new Date(ds).toLocaleDateString(undefined,{weekday:"short",day:"2-digit",month:"short"})); dsel.appendChild(o); });
+  populateArticles(); loadSelectedPassage();
+}
+function populateArticles(){
+  const ds=$("date").value||"__any", asel=$("article"); asel.innerHTML="";
+  articles.forEach((a,i)=>{ if(ds==="__any"||(a.date?a.date.toDateString():"Undated")===ds){ const o=document.createElement("option"); o.value=i; o.textContent="["+a.diff+"] "+a.title.slice(0,64)+" \u00b7 "+a.site; asel.appendChild(o); } });
+}
+function randomChunk(sents,target){
+  if(!sents.length) return "";
+  const counts=sents.map(s=>s.split(/\s+/).length), total=counts.reduce((a,b)=>a+b,0);
+  if(total<=target*1.15) return sents.join(" ");
+  let start=Math.floor(Math.random()*sents.length), out=[],wc=0,i=start;
+  while(i<sents.length && wc<target){ out.push(sents[i]); wc+=counts[i]; i++; }
+  i=start-1; while(wc<target && i>=0){ out.unshift(sents[i]); wc+=counts[i]; i--; }
+  return out.join(" ");
+}
+async function loadSelectedPassage(){
+  const asel=$("article"); const idx=parseInt(asel.value,10);
+  if(isNaN(idx)||!articles[idx]){ return false; }
+  const a=articles[idx]; let content=a.content||"";
+  if(a.needsFetch && a.link){
+    setLoading(true); const html=await fetchViaProxy(a.link); setLoading(false);
+    if(html){ try{ const d=new DOMParser().parseFromString(html,"text/html"); const node=d.querySelector("#ContentPlaceHolder1_divContent")||d.querySelector(".release-content")||d.querySelector("article")||d.querySelector("main"); if(node) content=node.textContent; }catch(e){} }
+  }
+  const text=normalizeText(randomChunk(cleanSentences(content),450));
+  if(words(text).length<60){ showNote("Couldn't get enough text from that article \u2014 pick another."); return false; }
+  const raw=String(a.diff).replace("~",""); const dl={E:"Easy",M:"Medium",H:"Hard"}[raw]||"Medium";
+  current=buildCurrent(a.site,"\u2014 "+a.title.slice(0,60), text, dl);
+  renderPassage(); resetHud(); return true;
+}
 
 /* ===== live Wikipedia sources (CC BY-SA, fetched in the user's browser) ===== */
-const WIKI_INDIA=["Constitution of India","Parliament of India","Fundamental rights in India","Directive Principles","Election Commission of India","Reserve Bank of India","Goods and Services Tax (India)","Union budget of India","Economy of India","Digital India","Make in India","Panchayati raj (India)","Indian Administrative Service","Supreme Court of India","President of India","Prime Minister of India","National Education Policy 2020","Indian Space Research Organisation","Chandrayaan-3","Sustainable Development Goals","Climate change in India","Renewable energy in India","Public distribution system","Ayushman Bharat Yojana","Swachh Bharat Mission","G20","National Green Tribunal","Right to Information Act, 2005","Census of India","Geography of India","Monsoon of India","Ganges","Himalayas","Agriculture in India","Startup India","Aadhaar","Unified Payments Interface"];
-const WIKI_JK=["Jammu and Kashmir","Kashmir","Jammu","Srinagar","Ladakh","Dal Lake","Wular Lake","Chenab River","Jhelum River","Pir Panjal Range","Zanskar","Amarnath Temple","Vaishno Devi","Dogra dynasty","Tourism in Jammu and Kashmir","Kashmir Valley","Gulmarg","Pahalgam","Sonamarg","Kashmiri cuisine","Pashmina","Saffron","Jammu and Kashmir Reorganisation Act, 2019","Economy of Jammu and Kashmir","Dachigam National Park","Hemis National Park","Chinar"];
 
 function cleanSentences(ex){
   let t=ex.replace(/\r/g,"\n");
@@ -451,83 +491,29 @@ function cleanSentences(ex){
   }
   return good;
 }
-function assembleMiddle(bodies,target){
-  let out=[], wc=0;
-  for(const sents of bodies){
-    if(!sents.length) continue;
-    const start=Math.floor(sents.length*0.30);      // skip the intro/dateline third
-    for(let i=start;i<sents.length && wc<target;i++){ out.push(sents[i]); wc+=sents[i].split(/\s+/).length; }
-    if(wc>=target) break;
-  }
-  if(wc<target){ for(const sents of bodies){ for(let i=0;i<sents.length && wc<target;i++){ if(out.indexOf(sents[i])<0){ out.push(sents[i]); wc+=sents[i].split(/\s+/).length; } } if(wc>=target) break; } }
+function middleChunk(sents,target){
+  if(!sents.length) return "";
+  const start=Math.floor(sents.length*0.25);   // skip the intro quarter (dateline / lead)
+  let out=[],wc=0;
+  for(let i=start;i<sents.length && wc<target;i++){ out.push(sents[i]); wc+=sents[i].split(/\s+/).length; }
+  let i=start-1;
+  while(wc<target && i>=0){ out.unshift(sents[i]); wc+=sents[i].split(/\s+/).length; i--; }  // extend backward, stays contiguous
   return out.join(" ");
 }
-async function fetchWiki(list,target){
-  const bodies=[]; let title="", wc=0, tries=0;
-  while(wc<target+30 && tries<10){
-    tries++;
-    const tt=list[Math.floor(Math.random()*list.length)];
-    try{
-      const url="https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&prop=extracts&explaintext=1&redirects=1&titles="+encodeURIComponent(tt);
-      const r=await fetch(url); if(!r.ok) continue;
-      const j=await r.json(); const page=Object.values(j.query.pages)[0];
-      if(!page||!page.extract) continue;
-      const sents=cleanSentences(page.extract);
-      if(sents.length>=8){ bodies.push(sents); if(!title)title=tt; wc+=sents.slice(Math.floor(sents.length*0.30)).reduce((a,s)=>a+s.split(/\s+/).length,0); }
-    }catch(e){}
+const PROXIES=[u=>"/api/fetch?url="+encodeURIComponent(u), u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u), u=>"https://corsproxy.io/?url="+encodeURIComponent(u)];
+async function fetchViaProxy(url){
+  for(const p of PROXIES){
+    try{ const r=await fetch(p(url)); if(r.ok){ const txt=await r.text(); if(txt && txt.length>300) return txt; } }catch(e){}
   }
-  const text=assembleMiddle(bodies,target);
-  if(words(text).length>=200) return {title, text, site:"Wikipedia"};
   return null;
 }
-async function fetchWikinews(target){
-  let members=[];
-  try{
-    const catUrl="https://en.wikinews.org/w/api.php?action=query&format=json&origin=*&list=categorymembers&cmtitle=Category:India&cmnamespace=0&cmsort=timestamp&cmdir=desc&cmlimit=50";
-    const cr=await fetch(catUrl); if(!cr.ok) return null;
-    const cj=await cr.json();
-    members=((cj.query&&cj.query.categorymembers)||[]).map(m=>m.title).filter(x=>x&&x.indexOf(":")<0);
-  }catch(e){ return null; }
-  if(!members.length) return null;
-  const bodies=[]; let title="", wc=0, tries=0;
-  while(wc<target+30 && tries<12){
-    tries++;
-    const tt=members[Math.floor(Math.random()*members.length)];
-    try{
-      const url="https://en.wikinews.org/w/api.php?action=query&format=json&origin=*&prop=extracts&explaintext=1&redirects=1&titles="+encodeURIComponent(tt);
-      const r=await fetch(url); if(!r.ok) continue;
-      const j=await r.json(); const page=Object.values(j.query.pages)[0];
-      if(!page||!page.extract) continue;
-      const sents=cleanSentences(page.extract);
-      if(sents.length>=6){ bodies.push(sents); if(!title)title=tt; wc+=sents.slice(Math.floor(sents.length*0.30)).reduce((a,s)=>a+s.split(/\s+/).length,0); }
-    }catch(e){}
-  }
-  const text=assembleMiddle(bodies,target);
-  if(words(text).length>=200) return {title, text, site:"Wikinews"};
-  return null;
-}
-function targetWords(){
-  const dur=(durSec||600)/60, nominalTop=62;
-  const spd = benchmark>0 ? (nominalTop+benchmark)/2 : nominalTop;   // avg of app top speed & benchmark
-  const mult = ({Easy:0.85, Medium:1, Hard:1.18})[$("diff").value]||1;
-  return Math.max(400, Math.min(700, Math.round(spd*dur*0.82*mult))); // words a strong typist finishes in the time
-}
-function pickExamText(target){
-  let text="", topics=[], used=new Set();
-  while(words(text).length<target && used.size<EXAM.length){
-    let i; do{ i=Math.floor(Math.random()*EXAM.length); }while(used.has(i) && used.size<EXAM.length);
-    used.add(i); text+=(text?" ":"")+EXAM[i].text; topics.push(EXAM[i].topic);
-  }
-  return {text:trimTo(text,target), topic: topics.length>1?"mixed topics":(topics[0]||"exam")};
-}
-function trimTo(text,n){
-  const sents=text.match(/[^.!?]+[.!?]+/g)||[text];
-  let out="",wc=0;
-  for(const s of sents){ out+=s; wc+=s.trim().split(/\s+/).length; if(wc>=n) break; }
-  return out.trim()||text;
+function htmlToText(html){
+  try{ const d=document.createElement("div"); d.innerHTML=html;
+    d.querySelectorAll("script,style,figure,figcaption,aside,table").forEach(n=>n.remove());
+    return d.textContent||""; }catch(e){ return html.replace(/<[^>]+>/g," "); }
 }
 function setLoading(on,msg){
-  $("btn-start").disabled=on; $("btn-new").disabled=on; $("src").disabled=on;
+  $("btn-start").disabled=on; $("btn-load").disabled=on; $("topic").disabled=on; $("date").disabled=on; $("article").disabled=on;
   if(on){ passageEl.innerHTML='<span style="color:#8ba0af;font-style:italic">'+(msg||"Fetching latest passage…")+'</span>'; }
 }
 let noteTimer=null;
@@ -536,27 +522,6 @@ function showNote(txt){ const n=$("note"); n.textContent=txt; n.style.display="i
 /* ===== passage generation ===== */
 let lastExam=-1;
 function pickExam(){ let i; do{ i=Math.floor(Math.random()*EXAM.length); }while(EXAM.length>1 && i===lastExam); lastExam=i; return EXAM[i]; }
-async function makePassage(){
-  const key=$("src").value, diff=$("diff").value, target=targetWords();
-  if(key==="news-india"||key==="wiki-india"||key==="wiki-jk"){
-    setLoading(true);
-    let res;
-    if(key==="news-india") res=await fetchWikinews(target);
-    else res=await fetchWiki(key==="wiki-jk"?WIKI_JK:WIKI_INDIA, target);
-    setLoading(false);
-    if(res){ current=buildCurrent("Passage","— "+res.title+" · "+res.site, res.text, diff); renderPassage(); return; }
-    const fp=pickExamText(target); current=buildCurrent("Exam-style","— "+fp.topic+" (offline fallback)", fp.text, diff);
-    renderPassage(); showNote("Couldn't reach the live source — offline or blocked here. Using an offline passage. Live sources work best when you open the file in your own browser.");
-    return;
-  }
-  if(key==="custom"){
-    if(customPassages.length){ const c=customPassages[Math.floor(Math.random()*customPassages.length)]; current=buildCurrent("My passage","— "+(c.topic||"custom"), trimTo(c.text,target), diff); }
-    else { const p=pickExamText(target); current=buildCurrent("Exam-style","— "+p.topic, p.text, diff); showNote("No saved passages yet — add them under 'My passages' below. Using an exam-style passage for now."); }
-    renderPassage(); return;
-  }
-  const p=pickExamText(target); current=buildCurrent("Exam-style","— "+p.topic, p.text, diff);
-  renderPassage();
-}
 
 function renderPassage(){
   $("p-name").textContent=current.name;
@@ -575,13 +540,14 @@ function renderPassage(){
 }
 
 /* ===== test control ===== */
+async function startFlow(){ if(!current||!current.text){ const ok=await loadSelectedPassage(); if(!ok){ showNote("Pick a topic and article first."); return; } } startTest(); }
 function startTest(){
   if(started) return;
   durSec=parseInt($("dur").value,10); remaining=durSec; finished=false;
   started=true; startTs=Date.now();
   input.disabled=false; input.value=""; input.focus();
   $("btn-start").disabled=true; $("btn-reset").disabled=false; $("btn-finish").disabled=false;
-  $("dur").disabled=$("bmode").disabled=$("src").disabled=$("btn-new").disabled=true;
+  $("dur").disabled=$("topic").disabled=$("date").disabled=$("article").disabled=$("btn-load").disabled=true;
   renderTime(); updateStats();
   tick=setInterval(()=>{ remaining=Math.max(0,durSec-Math.floor((Date.now()-startTs)/1000)); renderTime(); updateStats(); if(remaining<=0) finishTest(); },250);
 }
@@ -589,21 +555,21 @@ function armIdle(){
   clearInterval(tick); started=false; finished=false; remaining=durSec;
   input.value=""; input.disabled=true;
   $("btn-start").disabled=false; $("btn-reset").disabled=true; $("btn-finish").disabled=true;
-  $("dur").disabled=$("bmode").disabled=$("src").disabled=$("btn-new").disabled=false;
+  $("dur").disabled=$("topic").disabled=$("date").disabled=$("article").disabled=$("btn-load").disabled=false;
   renderTime(); resetHud();
 }
 function resetTest(){ armIdle(); renderPassage(); }
 function finishTest(){
   if(finished) return; finished=true; started=false; clearInterval(tick);
   input.disabled=true; $("btn-start").disabled=false; $("btn-reset").disabled=false; $("btn-finish").disabled=true;
-  $("dur").disabled=$("bmode").disabled=$("src").disabled=$("btn-new").disabled=false;
+  $("dur").disabled=$("topic").disabled=$("date").disabled=$("article").disabled=$("btn-load").disabled=false;
   showResults(computeStats());
 }
 
 /* ===== typing ===== */
 input.addEventListener("keydown",e=>{
   if(!started) return;
-  const mode=$("bmode").value;
+  const mode="word";
   if(e.key==="Backspace"){
     if(mode==="none"){ e.preventDefault(); return; }
     if(mode==="word"){
@@ -687,14 +653,14 @@ function computeStats(){
   const elapsed=Math.max(1,(started?Math.floor((Date.now()-startTs)/1000):durSec-remaining));
   const mins=Math.max(elapsed/60,1/60);
   const ev=evaluateWords(t, current.text);
-  const sm=$("smode")?$("smode").value:"typingmaster";
-  const errors = sm==="fullhalf" ? (ev.full + ev.half*0.5) : (ev.full + ev.half); // TM: every wrong word = 1 full
+  const errors = ev.full + ev.half; // JKSSB / TypingMaster: every wrong word counts once
   const keystrokes=t.length;
   const grossWords=keystrokes/5;
   const gross=grossWords/mins;
   const net=Math.max(0, gross-(errors/mins));
   const acc=grossWords>0?Math.max(0,(grossWords-errors)/grossWords)*100:100;
-  return {elapsed,keystrokes,gross,net,acc,errors,full:ev.full,half:ev.half};
+  const wordsTyped = t.trim()?t.trim().split(/\s+/).filter(Boolean).length:0;
+  return {elapsed,keystrokes,gross,net,acc,errors,full:ev.full,half:ev.half,wordsTyped};
 }
 const fmtErr=n=>Number.isInteger(n)?String(n):n.toFixed(1);
 function updateStats(){
@@ -752,15 +718,13 @@ async function showResults(s){
   renderMarks();
   $("topper").oninput=()=>{ const val=Math.max(1,parseFloat($("topper").value)||current.top); current.top=clampTop(val); $("topper-inline").value=current.top; renderMarks(); };
 
-  const sm=$("smode").value;
-  const errCells = sm==="fullhalf"
-    ? [{k:"Full Mistakes",v:s.full,u:"×1",c:s.full>0?"":"good"},{k:"Half Mistakes",v:s.half,u:"×½",c:s.half>0?"":"good"}]
-    : [{k:"Wrong Words",v:s.full+s.half,u:"×1",c:(s.full+s.half)>0?"":"good"},{k:"Keystrokes",v:s.keystrokes,u:"",c:""}];
+  const errCell = {k:"Wrong Words",v:s.full+s.half,u:"",c:(s.full+s.half)>0?"":"good"};
   const cells=[
     {k:"Net Speed",v:Math.round(s.net),u:"wpm",c:s.net>=35?"good":"warn"},
     {k:"Accuracy",v:s.acc.toFixed(1),u:"%",c:s.acc>=90?"good":"warn"},
     {k:"Gross Speed",v:Math.round(s.gross),u:"wpm",c:""},
-    ...errCells,
+    {k:"Words Typed",v:s.wordsTyped,u:"",c:""},
+    errCell,
     {k:"Time Taken",v:`${Math.floor(s.elapsed/60)}:${String(s.elapsed%60).padStart(2,"0")}`,u:"",c:""}
   ];
   $("res-grid").innerHTML=cells.map(c=>`<div class="res-cell ${c.c}"><div class="k">${c.k}</div><div class="v">${c.v}${c.u?` <small>${c.u}</small>`:""}</div></div>`).join("");
@@ -829,18 +793,18 @@ function renderHistory(){
 $("hist-clear").onclick=()=>{ store.set("jk_history","[]"); renderHistory(); };
 
 /* ===== wire up ===== */
-$("btn-start").onclick=startTest;
+$("btn-start").onclick=startFlow;
 $("btn-reset").onclick=resetTest;
 $("btn-finish").onclick=()=>{ if(started) finishTest(); };
-$("btn-new").onclick=()=>{ armIdle(); makePassage(); };
-$("src").onchange=()=>{ store.set("jk_src",$("src").value); if(!started){ armIdle(); makePassage(); } };
-$("diff").onchange=()=>{ store.set("jk_diff",$("diff").value); if(!started){ armIdle(); makePassage(); } };
-$("smode").onchange=()=>store.set("jk_smode",$("smode").value);
+$("topic").onchange=()=>{ if(!started){ armIdle(); loadArticles(); } };
+$("date").onchange=()=>{ if(!started){ populateArticles(); loadSelectedPassage(); } };
+$("article").onchange=()=>{ if(!started) loadSelectedPassage(); };
+$("btn-load").onclick=()=>{ if(!started){ armIdle(); loadArticles(); } };
 $("benchmark").addEventListener("input",()=>{ const v=parseFloat($("benchmark").value); benchmark=(!isNaN(v)&&v>0)?clampTop(v):0; store.set("jk_benchmark",benchmark); });
 $("cutoff").addEventListener("input",()=>{ const v=parseFloat($("cutoff").value); passCutoff=!isNaN(v)?Math.max(0,Math.min(20,v)):10; store.set("jk_cutoff",passCutoff); });
 $("dur").onchange=e=>{ if(!started){ durSec=remaining=parseInt(e.target.value,10); renderTime(); } };
 $("btn-again").onclick=()=>{ closeModal(); armIdle(); renderPassage(); setTimeout(startTest,120); };
-$("btn-next").onclick=()=>{ closeModal(); armIdle(); makePassage(); };
+$("btn-next").onclick=async ()=>{ closeModal(); armIdle(); const ok=await loadSelectedPassage(); if(ok) setTimeout(startTest,150); };
 $("btn-review").onclick=()=>{ const r=$("review"); const open=r.style.display!=="none"; r.style.display=open?"none":"block"; $("btn-review").textContent=open?"Review mistakes ▾":"Hide comparison ▴"; };
 $("custom-toggle").onclick=()=>{ const b=$("custom-body"); b.style.display=b.style.display==="none"?"flex":"none"; };
 $("custom-add").onclick=()=>{
@@ -865,16 +829,15 @@ passageEl.addEventListener("click",()=>{ if(started) input.focus(); });
 /* ===== init ===== */
 (async function init(){
   const cb=store.get("jk_calib"); if(cb!=null){ const v=parseFloat(cb); if(!isNaN(v)) calib=v; }
-  const sm=store.get("jk_smode"); if(sm){ $("smode").value=sm; }
-  const bm=store.get("jk_benchmark"); if(bm!=null){ const v=parseFloat(bm); if(!isNaN(v)&&v>0){ benchmark=v; $("benchmark").value=v; } }
+    const bm=store.get("jk_benchmark"); if(bm!=null){ const v=parseFloat(bm); if(!isNaN(v)&&v>0){ benchmark=v; $("benchmark").value=v; } }
   const co=store.get("jk_cutoff"); if(co!=null){ const v=parseFloat(co); if(!isNaN(v)){ passCutoff=v; $("cutoff").value=v; } }
   try{ customPassages=JSON.parse(store.get("jk_custom")||"[]"); }catch(e){ customPassages=[]; }
   renderCustomList();
   durSec=remaining=600;
-  const validSrc=["exam","news-india","wiki-india","wiki-jk","custom"], ss=store.get("jk_src");
-  $("src").value = validSrc.includes(ss)?ss:"exam";
-  const sd=store.get("jk_diff"); if(["Easy","Medium","Hard"].includes(sd)) $("diff").value=sd;
-  await makePassage(); syncCalib(); renderTime(); resetHud(); renderHistory();
+  const savedSrc=store.get("jk_source"), validS=["all","conversation","mongabay","pib","exam","custom"];
+  $("topic").value = validS.includes(savedSrc)?savedSrc:"all";
+  syncCalib(); renderTime(); resetHud(); renderHistory();
+  await loadArticles();
   const b=store.get("jk_best"); if(b){ bestNet=parseFloat(b); $("best-val").textContent=Math.round(bestNet)+" wpm"; }
 })();
 </script>
