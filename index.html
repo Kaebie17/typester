@@ -390,20 +390,23 @@ let current={name:"",src:"",text:"",diff:"Medium",autoTop:60,top:60};
 /* ===== source selector ===== */
 const SOURCES={
   pib:{kind:"pib", site:"PIB", feeds:[
-    "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=1",
     "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3",
-    "https://www.pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=1"
+    "https://www.pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3",
+    "https://pib.gov.in/ViewRss.aspx?reg=3&lang=1"
   ]},
-  conversation:{kind:"atom", site:"The Conversation", feeds:[
+  conversation:{kind:"atom", site:"The Conversation IN", feeds:[
     "https://theconversation.com/in/articles.atom",
     "https://theconversation.com/in/business/articles.atom",
-    "https://theconversation.com/articles.atom"
+    "https://theconversation.com/in/politics/articles.atom"
   ]},
   mongabay:{kind:"rss", site:"Mongabay India", feeds:[
     "https://india.mongabay.com/feed/"
   ]}
 };
 const srcStatus={};
+const DEVANAGARI=/[\u0900-\u097F]/;
+function isLatin(t){ if(!t) return false; if(DEVANAGARI.test(t)) return false;
+  const letters=(t.match(/[A-Za-z]/g)||[]).length; return letters >= Math.max(8, t.replace(/\s/g,"").length*0.4); }
 let articles=[];
 function diffLabel(text){ const w=(text.match(/[A-Za-z']+/g)||["x"]); const longr=w.filter(x=>x.length>6).length/w.length; const sents=(text.match(/[.!?]+/g)||[]).length||1; const idx=longr*100 + w.length/sents; return idx<40?"E":idx<48?"M":"H"; }
 function examArticles(){ return EXAM.map(p=>({title:p.topic, content:p.text, date:null, diff:diffLabel(p.text), site:"Exam-style"})); }
@@ -417,7 +420,7 @@ async function loadFeed(feed, s){
     Array.from(doc.querySelectorAll("entry")).forEach(e=>{
       const g=n=>{const x=e.querySelector(n);return x?x.textContent.trim():"";};
       const cEl=e.querySelector("content")||e.querySelector("summary");
-      const content=htmlToText(cEl?cEl.textContent:""); const title=g("title"); if(!title) return;
+      const content=htmlToText(cEl?cEl.textContent:""); const title=g("title"); if(!title||!isLatin(title)) return;
       const dt=g("published")||g("updated"); const d=dt?new Date(dt):null;
       out.push({title, content, date:(d&&!isNaN(d))?d:null, diff:diffLabel(content||title), site:s.site});
     });
@@ -426,14 +429,15 @@ async function loadFeed(feed, s){
       const g=n=>{const x=it.querySelector(n);return x?x.textContent.trim():"";};
       const enc=it.getElementsByTagName("content:encoded")[0];
       const hasFull=!!(enc&&enc.textContent&&enc.textContent.length>400);
-      const content=htmlToText(hasFull?enc.textContent:g("description")); const title=g("title"); if(!title) return;
+      const content=htmlToText(hasFull?enc.textContent:g("description")); const title=g("title"); if(!title||!isLatin(title)) return;
       const dt=g("pubDate"); const d=dt?new Date(dt):null;
       const needs=(s.kind==="pib"&&!hasFull);
       out.push({title, link:g("link"), content, date:(d&&!isNaN(d))?d:null,
                 diff:needs?("~"+diffLabel(content||title)):diffLabel(content||title), site:s.site, needsFetch:needs});
     });
   }
-  srcStatus[s.site]= out.length? (out.length+" ok") : "empty feed";
+  const rawCount=doc.querySelectorAll(s.kind==="atom"?"entry":"item").length;
+  srcStatus[s.site]= out.length? (out.length+" ok") : (rawCount? "non-English feed" : "empty feed");
   return out;
 }
 async function loadSource(key){
