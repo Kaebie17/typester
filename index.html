@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Typester — JKSSB Junior Assistant Typing Practice</title>
+<title>JK TypeTest — JKSSB Junior Assistant Typing Practice</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -220,7 +220,7 @@
       </div>
     </div>
 
-    <div class="passage" id="passage" aria-hidden="true"></div>
+    <div class="passage" id="passage" aria-hidden="true"><span style="color:#9aa7b0;font-style:italic">Pick a date and a title above to load a passage.</span></div>
 
     <div class="type-zone">
       <div class="type-label">Type here ↓</div>
@@ -421,7 +421,7 @@ async function loadFeed(feed, s){
 }
 async function loadArticles(){
   const msg=x=>{ $("art-msg").textContent=x; };
-  setLoading(true); msg("Fetching titles and dates from all sources\u2026");
+  setLoading(true); msg("Fetching titles and dates from all sources\u2026");   // status line only
   const jobs=[];
   ["conversation","mongabay","pib"].forEach(k=>SOURCES[k].feeds.forEach(f=>jobs.push(
     loadFeed(f, SOURCES[k]).catch(()=>[])
@@ -463,7 +463,7 @@ async function loadSelectedPassage(){
   if(isNaN(idx)||!articles[idx]){ return false; }
   const a=articles[idx]; let content=a.content||"";
   if(a.needsFetch && a.link){
-    setLoading(true); const html=await fetchViaProxy(a.link); setLoading(false);
+    setLoading(true,"Loading passage\u2026"); const html=await fetchViaProxy(a.link); setLoading(false);
     if(html){ try{ const d=new DOMParser().parseFromString(html,"text/html"); const node=d.querySelector("#ContentPlaceHolder1_divContent")||d.querySelector(".release-content")||d.querySelector("article")||d.querySelector("main"); if(node) content=node.textContent; }catch(e){} }
   }
   const text=normalizeText(randomChunk(cleanSentences(content),450));
@@ -516,7 +516,7 @@ function htmlToText(html){
 }
 function setLoading(on,msg){
   $("btn-load").disabled=on; $("btn-load").textContent = on ? "Loading\u2026" : "Refresh";
-  if(on){ passageEl.innerHTML='<span style="color:#8ba0af;font-style:italic">'+(msg||"Fetching latest passage…")+'</span>'; }
+  if(on && msg){ passageEl.innerHTML='<span style="color:#8ba0af;font-style:italic">'+msg+'</span>'; }
 }
 let noteTimer=null;
 function showNote(txt){ const n=$("note"); n.textContent=txt; n.style.display="inline-block"; clearTimeout(noteTimer); noteTimer=setTimeout(()=>n.style.display="none",6000); }
