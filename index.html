@@ -258,6 +258,7 @@
       <span>Pass mark:</span>
       <input type="number" id="cutoff" min="0" max="20" value="10"> / 20
     </span>
+    <span class="pill" id="store-warn" style="display:none;color:#ffd9b0;border-color:rgba(199,124,30,.45)"></span>
     <span class="pill" id="note" style="display:none;color:#ffd9b0;border-color:rgba(199,124,30,.45)"></span>
   </div>
 
@@ -272,7 +273,7 @@
   </div>
 
   <div class="hist" id="hist" style="display:none">
-    <div class="hist-head"><span>Recent attempts</span><button id="hist-clear" class="btn-tiny">Clear history</button></div>
+    <div class="hist-head"><span>Recent attempts <span id="hist-count" style="opacity:.7;font-weight:500"></span></span><span style="display:flex;gap:6px"><button id="hist-export" class="btn-tiny">Export</button><button id="hist-import" class="btn-tiny">Import</button><button id="hist-clear" class="btn-tiny">Clear</button></span></div>
     <div class="hist-rows" id="hist-rows"></div>
   </div>
 
@@ -335,7 +336,17 @@ const EXAM=[
 /* ===== helpers ===== */
 const $=id=>document.getElementById(id);
 const passageEl=$("passage"), input=$("input");
-const store={mem:{},get(k){try{const v=localStorage.getItem(k);return v!=null?v:(this.mem[k]??null);}catch(e){return this.mem[k]??null;}},set(k,v){try{localStorage.setItem(k,String(v));}catch(e){this.mem[k]=String(v);}}};
+const store={mem:{}, ok:null,
+  probe(){ try{ const k="__probe__"; localStorage.setItem(k,"1"); localStorage.removeItem(k); this.ok=true; }
+           catch(e){ this.ok=false; } return this.ok; },
+  get(k){ try{ const v=localStorage.getItem(k); if(v!=null) return v; }catch(e){ this.ok=false; } return this.mem[k]??null; },
+  set(k,v){ this.mem[k]=String(v); try{ localStorage.setItem(k,String(v)); }catch(e){ this.ok=false; storageWarn(); } }
+};
+function storageWarn(){
+  const el=document.getElementById("store-warn"); if(!el) return;
+  el.style.display="inline-block";
+  el.textContent="\u26a0 Browser storage is blocked here \u2014 results are kept only for this session. Open the app in a normal tab (not an embedded preview or private window) to save history.";
+}
 const words=t=>t.trim().split(/\s+/).filter(Boolean);
 
 /* ===== per-passage top speed (realistic ceiling a fast, accurate typist could hit ON THIS text) ===== */
@@ -672,14 +683,25 @@ function paint(){
 function esc(s){ return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
 function buildComparison(typed){
   const P=passageWords, T=typed.trim().length?typed.trim().split(/\s+/):[];
-  const n=Math.max(P.length,T.length);
-  let o="",ty="";
-  for(let k=0;k<n;k++){
-    const p=P[k], t=T[k];
-    const bad = p===undefined || t===undefined || t!==p;
-    if(p!==undefined) o += (bad?`<span class="missp">${esc(p)}</span>`:esc(p))+" ";
-    if(t!==undefined) ty += (bad?`<span class="miss">${esc(t)}</span>`:esc(t))+" ";
+  const strip=x=>x.replace(/[^A-Za-z0-9]/g,"");
+  let i=0,j=0,o="",ty="";
+  const okP=w=>{o+=esc(w)+" ";}, badP=w=>{o+='<span class="missp">'+esc(w)+'</span> ';};
+  const okT=w=>{ty+=esc(w)+" ";}, badT=w=>{ty+='<span class="miss">'+esc(w)+'</span> ';};
+  while(i<P.length && j<T.length){
+    const p=P[i], t=T[j];
+    if(t===p){ okP(p); okT(t); i++; j++; continue; }                                   // exact match
+    if(t.toLowerCase()===p.toLowerCase() || (strip(t)===strip(p) && strip(p))){        // caps / punctuation slip
+      badP(p); badT(t); i++; j++; continue; }
+    if(i+1<P.length && t===p+P[i+1]){ badP(p); badP(P[i+1]); badT(t); i+=2; j++; continue; }   // missing space
+    if(j+1<T.length && (t+T[j+1])===p){ badP(p); badT(t); badT(T[j+1]); i++; j+=2; continue; } // extra space
+    if(i+1<P.length && j+1<T.length && t===P[i+1] && T[j+1]===p){                      // transposition
+      badP(p); badP(P[i+1]); badT(t); badT(T[j+1]); i+=2; j+=2; continue; }
+    if(i+1<P.length && t===P[i+1]){ badP(p); i++; continue; }                          // omitted word: mark it, resync
+    if(j+1<T.length && T[j+1]===p){ badT(t); j++; continue; }                          // added word: mark it, resync
+    badP(p); badT(t); i++; j++;                                                        // substitution
   }
+  while(i<P.length){ o+='<span style="opacity:.45">'+esc(P[i])+'</span> '; i++; }      // not reached = not penalised
+  while(j<T.length){ badT(T[j]); j++; }
   return {origHtml:o.trim(), typedHtml:ty.trim()||'<span style="color:#9aa7b0">(nothing typed)</span>'};
 }
 function autoScroll(){
@@ -833,33 +855,80 @@ $("topper-inline").addEventListener("input",()=>{
 function loadHistory(){ try{ return JSON.parse(store.get("jk_history")||"[]"); }catch(e){ return []; } }
 function recordAttempt(s,V){
   const h=loadHistory();
-  h.unshift({t:Date.now(),net:Math.round(s.net),acc:+s.acc.toFixed(1),gross:Math.round(s.gross),diff:current.diff,
-    mApp:+V.mApp.toFixed(1), mBm:V.mBm!=null?+V.mBm.toFixed(1):null,
-    passApp:V.passApp, passBm:V.passBm, cutoff:passCutoff, src:current.src.replace(/^—\s*/,"")});
-  while(h.length>40) h.pop();
-  store.set("jk_history",JSON.stringify(h));
+  h.unshift({t:Date.now(), net:Math.round(s.net), acc:+s.acc.toFixed(1), gross:Math.round(s.gross),
+             diff:current.diff, top:current.top, src:current.src.replace(/^\u2014\s*/,"")});   // raw only; marks derived at render
+  while(h.length>60) h.pop();
+  const payload=JSON.stringify(h);
+  store.set("jk_history",payload);
+  try{ if((localStorage.getItem("jk_history")||"").length!==payload.length) storageWarn(); }catch(e){ storageWarn(); }
   renderHistory();
+}
+function marksFor(a){
+  // BENCHMARK SCORE: always (re)calculated from net speed + current benchmark
+  const mBm = benchmark>0 ? Math.min(20,(a.net/benchmark)*20) : null;
+  // APP SCORE: use the value already stored on older attempts; compute for new ones
+  let mApp = (a.mApp!=null ? a.mApp : (a.marks!=null ? a.marks : null));
+  let appDenom = a.top || null;
+  if(mApp==null){
+    const rawTop = a.top || 60;
+    appDenom = benchmark>0 ? Math.round((rawTop+benchmark)/2) : rawTop;
+    mApp = Math.min(20,(a.net/appDenom)*20);
+  }
+  const floorOK = a.acc>=90 && a.net>=35;
+  return {mApp, mBm, appDenom,
+          passApp: floorOK && mApp>=passCutoff,
+          passBm:  mBm!=null ? (floorOK && mBm>=passCutoff) : null};
 }
 function renderHistory(){
   const h=loadHistory(), box=$("hist"), rows=$("hist-rows");
+  const cEl=document.getElementById("hist-count");
+  if(cEl){
+    let inLS=0; try{ inLS=(JSON.parse(localStorage.getItem("jk_history")||"[]")||[]).length; }catch(e){ inLS=-1; }
+    cEl.textContent="\u2014 "+h.length+" shown, "+(inLS<0?"unreadable":inLS+" saved");
+    if(inLS>=0 && inLS<h.length) storageWarn();
+  }
   if(!h.length){ box.style.display="none"; return; }
   box.style.display="block";
-  rows.innerHTML=h.slice(0,8).map(a=>{
+  rows.innerHTML=h.slice(0,10).map(a=>{
     const d=new Date(a.t), when=d.toLocaleDateString(undefined,{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
-    const mApp=a.mApp!=null?a.mApp:(a.marks!=null?a.marks:0);
-    const mBm=a.mBm!=null?a.mBm:(a.bmarks!=null?a.bmarks:null);
-    const passApp=a.passApp!=null?a.passApp:!!a.q;
-    const passBm=a.passBm!=null?a.passBm:null;
-    const mk = mBm!=null?`${mApp}/${mBm}`:`${mApp}`;
-    const bA=`<span class="hbadge ${passApp?'q':'nq'}">A ${passApp?'✓':'✗'}</span>`;
-    const bB=passBm!=null?`<span class="hbadge ${passBm?'q':'nq'}">B ${passBm?'✓':'✗'}</span>`:"";
-    return `<div class="hrow">
-      <span class="when">${when}</span>
-      <span class="meta"><b>${a.net}</b> net · <b>${a.acc}%</b> · marks <b>${mk}</b>/20 · <span class="diffdot ${a.diff}">${a.diff}</span></span>
-      <span class="hbadges">${bA}${bB}</span>
-    </div>`;
+    const m=marksFor(a);
+    const mk = m.mBm!=null ? (m.mApp.toFixed(1)+"/"+m.mBm.toFixed(1)) : m.mApp.toFixed(1);
+    const bA='<span class="hbadge '+(m.passApp?'q':'nq')+'">A '+(m.passApp?'\u2713':'\u2717')+'</span>';
+    const bB=m.passBm!=null?'<span class="hbadge '+(m.passBm?'q':'nq')+'">B '+(m.passBm?'\u2713':'\u2717')+'</span>':"";
+    return '<div class="hrow"><span class="when">'+when+'</span>'+
+      '<span class="meta"><b>'+a.net+'</b> net \u00b7 <b>'+a.acc+'%</b> \u00b7 marks <b>'+mk+'</b>/20 \u00b7 <span class="diffdot '+a.diff+'">'+a.diff+'</span></span>'+
+      '<span class="hbadges">'+bA+bB+'</span></div>';
   }).join("");
 }
+$("hist-export").onclick=()=>{
+  const data=store.get("jk_history")||"[]";
+  const blob=new Blob([data],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download="typing-history.json"; a.click();
+  URL.revokeObjectURL(a.href);
+};
+$("hist-import").onclick=()=>{
+  const inp=document.createElement("input"); inp.type="file"; inp.accept="application/json,.json";
+  inp.onchange=()=>{
+    const f=inp.files&&inp.files[0]; if(!f) return;
+    const rd=new FileReader();
+    rd.onload=()=>{
+      try{
+        const incoming=JSON.parse(rd.result);
+        if(!Array.isArray(incoming)) throw 0;
+        const cur=loadHistory();
+        const seen=new Set(cur.map(x=>x.t));
+        const merged=cur.concat(incoming.filter(x=>x&&x.t&&!seen.has(x.t)));
+        merged.sort((a,b)=>b.t-a.t);
+        store.set("jk_history",JSON.stringify(merged.slice(0,200)));
+        renderHistory();
+        showNote("Imported "+incoming.length+" attempts \u2014 merged into your history.");
+      }catch(e){ showNote("That file didn\u2019t look like a history export."); }
+    };
+    rd.readAsText(f);
+  };
+  inp.click();
+};
 $("hist-clear").onclick=()=>{ store.set("jk_history","[]"); renderHistory(); };
 
 /* ===== wire up ===== */
@@ -869,8 +938,8 @@ $("btn-finish").onclick=()=>{ if(started) finishTest(); };
 $("date").onchange=()=>{ if(!started) populateArticles(); };
 $("article").onchange=()=>{ if(!started){ $("art-msg").textContent="Loading passage\u2026"; loadSelectedPassage().then(ok=>{ $("art-msg").textContent = ok ? "Passage ready \u2014 press Start." : "Couldn\u2019t load that article \u2014 try another."; }); } };
 $("btn-load").onclick=()=>{ if(!started){ armIdle(); loadArticles(); } };
-$("benchmark").addEventListener("input",()=>{ const v=parseFloat($("benchmark").value); benchmark=(!isNaN(v)&&v>0)?clampTop(v):0; store.set("jk_benchmark",benchmark); });
-$("cutoff").addEventListener("input",()=>{ const v=parseFloat($("cutoff").value); passCutoff=!isNaN(v)?Math.max(0,Math.min(20,v)):10; store.set("jk_cutoff",passCutoff); });
+$("benchmark").addEventListener("input",()=>{ const v=parseFloat($("benchmark").value); benchmark=(!isNaN(v)&&v>0)?clampTop(v):0; store.set("jk_benchmark",benchmark); renderHistory(); });
+$("cutoff").addEventListener("input",()=>{ const v=parseFloat($("cutoff").value); passCutoff=!isNaN(v)?Math.max(0,Math.min(20,v)):10; store.set("jk_cutoff",passCutoff); renderHistory(); });
 $("dur").onchange=e=>{ if(!started){ durSec=remaining=parseInt(e.target.value,10); renderTime(); } };
 $("btn-again").onclick=()=>{ closeModal(); armIdle(); renderPassage(); setTimeout(startTest,120); };
 $("btn-next").onclick=async ()=>{ closeModal(); armIdle(); const ok=await loadSelectedPassage(); if(ok) setTimeout(startTest,150); };
@@ -904,6 +973,7 @@ passageEl.addEventListener("click",()=>{ if(started) input.focus(); });
   renderCustomList();
   durSec=remaining=600;
 
+  if(!store.probe()) storageWarn();
   syncCalib(); renderTime(); resetHud(); renderHistory();
   loadArticles();   // metadata only: titles + dates from all sources, in the background
   const b=store.get("jk_best"); if(b){ bestNet=parseFloat(b); $("best-val").textContent=Math.round(bestNet)+" wpm"; }
