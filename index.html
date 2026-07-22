@@ -442,7 +442,28 @@ function diffLabel(text){
   const score=(longw*40)+(slen*0.55)+(per100(digits)*3.2)+(per100(breaks)*2.6)+(per100(caps)*1.1);
   return score<28?"E":score<42?"M":"H";
 }
-function examArticles(){ return EXAM.map(p=>({title:p.topic, content:p.text, date:null, diff:diffLabel(p.text), site:"Exam-style"})); }
+function customArticles(){
+  const out=[];
+  customPassages.forEach(p=>{
+    const sents=cleanSentences(p.text);
+    const total=sents.reduce((a,x)=>a+x.split(/\s+/).length,0);
+    const n=Math.max(1, Math.round(total/450));          // even split, each ~400-500 words
+    const target=Math.ceil(total/n);
+    const chunks=[]; let cur=[], wc=0;
+    sents.forEach(sn=>{
+      cur.push(sn); wc+=sn.split(/\s+/).length;
+      if(wc>=target && chunks.length<n-1){ chunks.push(cur.join(" ")); cur=[]; wc=0; }
+    });
+    if(cur.length) chunks.push(cur.join(" "));
+    const base=p.topic||"My passage";
+    chunks.forEach((c,i)=>{
+      out.push({title: base+(chunks.length>1?" ("+(i+1)+"/"+chunks.length+")":""),
+                content:c, wc:c.trim().split(/\s+/).length, date:null, diff:diffLabel(c), site:"My passages"});
+    });
+  });
+  return out;
+}
+function examArticles(){ return EXAM.map(p=>({title:p.topic, content:p.text, wc:p.text.trim().split(/\s+/).length, date:null, diff:diffLabel(p.text), site:"Exam-style"})); }
 async function loadFeed(feed, s){
   const xml=await fetchViaProxy(feed, looksLikeFeed);
   if(!xml){ srcStatus[s.site]="blocked \u2014 got: "+(lastSnippet||"nothing"); return []; }
@@ -459,9 +480,11 @@ async function loadFeed(feed, s){
       const cEl=e.querySelector("content")||e.querySelector("summary");
       const title=g("title"); if(!title||!isLatin(title)) return;
       const content=htmlToText(cEl?cEl.textContent:"");
-      const cleanTxt=cleanSentences(content).join(" ");          // tag from normalized text
+      const cleanTxt=cleanSentences(content).join(" ");
+      const wc=cleanTxt.trim()?cleanTxt.trim().split(/\s+/).length:0;
+      if(wc<400) return;                                   // too short for a full passage
       const dt=g("published")||g("updated"); const d=dt?new Date(dt):null;
-      out.push({title, content, date:(d&&!isNaN(d))?d:null, diff:diffLabel(cleanTxt||title), site:s.site});
+      out.push({title, content, wc, date:(d&&!isNaN(d))?d:null, diff:diffLabel(cleanTxt), site:s.site});
     });
   } else {
     Array.from(doc.querySelectorAll("item")).forEach(it=>{
@@ -471,9 +494,11 @@ async function loadFeed(feed, s){
       const title=g("title"); if(!title||!isLatin(title)) return;
       const content=htmlToText(hasFull?enc.textContent:g("description"));
       const cleanTxt=cleanSentences(content).join(" ");
-      const dt=g("pubDate"); const d=dt?new Date(dt):null;
+      const wc=cleanTxt.trim()?cleanTxt.trim().split(/\s+/).length:0;
       const needs=(s.kind==="pib"&&!hasFull);
-      out.push({title, link:g("link"), content, date:(d&&!isNaN(d))?d:null,
+      if(!needs && wc<400) return;                          // full-text source but too short
+      const dt=g("pubDate"); const d=dt?new Date(dt):null;
+      out.push({title, link:g("link"), content, wc, date:(d&&!isNaN(d))?d:null,
                 diff:needs?("~"+diffLabel(cleanTxt||title)):diffLabel(cleanTxt||title),
                 site:s.site, needsFetch:needs});
     });
@@ -496,7 +521,7 @@ async function loadArticles(){
   let results=[]; try{ results=await Promise.all(keys.map(k=>loadSource(k))); }catch(e){ results=[]; }
   setLoading(false);
   const live=results.flat();
-  articles=live.concat(examArticles());
+  articles=live.concat(customArticles()).concat(examArticles());
   articles.sort((a,b)=>(b.date?b.date.getTime():0)-(a.date?a.date.getTime():0));
   fillDateAndArticles();
   const parts=keys.map(k=>{ const st=SOURCES[k].site; const v=srcStatus[st]||"no response";
@@ -514,7 +539,7 @@ function fillDateAndArticles(){
 }
 function populateArticles(){
   const ds=$("date").value||"__any", asel=$("article"); asel.innerHTML="";
-  articles.forEach((a,i)=>{ if(ds==="__any"||(a.date?a.date.toDateString():"Undated")===ds){ const o=document.createElement("option"); o.value=i; o.textContent="["+a.diff+"] "+a.title.slice(0,64)+" \u00b7 "+a.site; asel.appendChild(o); } });
+  articles.forEach((a,i)=>{ if(ds==="__any"||(a.date?a.date.toDateString():"Undated")===ds){ const o=document.createElement("option"); o.value=i; o.textContent="["+a.diff+"] "+a.title.slice(0,58)+" \u00b7 "+a.site+" \u00b7 "+(a.wc?a.wc+"w":"?w"); asel.appendChild(o); } });
 }
 function randomChunk(sents,target){
   if(!sents.length) return "";
@@ -537,7 +562,7 @@ async function loadSelectedPassage(){
   }
   const text=normalizeText(randomChunk(cleanSentences(content),450))
     .replace(/[^\x20-\x7E]/g," ").replace(/\s+/g," ").trim();   // final guard: only typeable characters
-  if(words(text).length<60){ showNote("Couldn't get enough text from that article \u2014 pick another."); return false; }
+  if(words(text).length<400){ showNote("That article only yields "+words(text).length+" usable words (need 400+) \u2014 pick another."); return false; }
   const dl={E:"Easy",M:"Medium",H:"Hard"}[diffLabel(text)]||"Medium";   // from the real passage, not the list estimate
   current=buildCurrent(a.site,"\u2014 "+a.title.slice(0,60), text, dl);
   renderPassage(); resetHud(); return true;
@@ -977,14 +1002,14 @@ $("custom-add").onclick=()=>{
   if(text.split(" ").filter(Boolean).length<20){ $("custom-msg").textContent="Paste a longer passage (20+ words)."; return; }
   customPassages.unshift({topic:title||("Custom "+(customPassages.length+1)), text});
   store.set("jk_custom", JSON.stringify(customPassages));
-  $("custom-title").value=""; $("custom-text").value=""; $("custom-msg").textContent="Added ✓ — pick 'My passages' as the source.";
+  $("custom-title").value=""; $("custom-text").value=""; loadArticles(); $("custom-msg").textContent="Added ✓ — pick 'My passages' as the source.";
   renderCustomList();
 };
 function renderCustomList(){
   const list=$("custom-list");
   if(!customPassages.length){ list.innerHTML='<span style="color:#7e93a2;font-size:12px">No saved passages yet.</span>'; return; }
   list.innerHTML=customPassages.map((p,i)=>`<div class="crow"><span class="ctitle">${esc(p.topic)}</span><span class="cwc">${p.text.trim().split(/\s+/).length} words</span><button data-i="${i}">Delete</button></div>`).join("");
-  list.querySelectorAll("button[data-i]").forEach(b=>b.onclick=()=>{ customPassages.splice(+b.dataset.i,1); store.set("jk_custom",JSON.stringify(customPassages)); renderCustomList(); });
+  list.querySelectorAll("button[data-i]").forEach(b=>b.onclick=()=>{ customPassages.splice(+b.dataset.i,1); store.set("jk_custom",JSON.stringify(customPassages)); renderCustomList(); loadArticles(); });
 }
 $("overlay").addEventListener("click",e=>{ if(e.target.id==="overlay") closeModal(); });
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeModal(); });
