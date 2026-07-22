@@ -229,14 +229,13 @@
     </div>
 
     <div class="controls">
-      <div class="field"><label for="topic">Source</label><select id="topic"></select></div>
-      <div class="field"><label for="date">Date</label><select id="date"><option value="__any">Any date</option></select></div>
-      <div class="field" style="flex:1;min-width:210px"><label for="article">Article (difficulty tagged)</label><select id="article"></select></div>
+      <div class="field"><label for="date">Date</label><select id="date"><option value="__any">Loading…</option></select></div>
+      <div class="field" style="flex:1;min-width:210px"><label for="article">Title (all sources)</label><select id="article"></select></div>
       <div class="field"><label for="dur">Duration</label>
         <select id="dur"><option value="600" selected>10 min (exam)</option><option value="300">5 min</option><option value="120">2 min</option><option value="60">1 min</option></select>
       </div>
       <div class="spacer"></div>
-      <button class="btn-ghost" id="btn-load">Reload</button>
+      <button class="btn-ghost" id="btn-load">Refresh</button>
       <button class="btn-ghost" id="btn-finish" disabled>Finish</button>
       <button class="btn-ghost" id="btn-reset" disabled>Reset</button>
       <button class="btn-primary" id="btn-start">Start test</button>
@@ -395,7 +394,6 @@ const SOURCES={
   pib:{kind:"pib", feeds:["https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=1"], site:"PIB"}
 };
 let articles=[];
-(function fillSourceSel(){ const s=$("topic"); [["all","All 3 live sources"],["conversation","The Conversation"],["mongabay","Mongabay India"],["pib","PIB (govt)"],["exam","Exam-style (offline)"],["custom","My passages (offline)"]].forEach(([v,l])=>{const o=document.createElement("option");o.value=v;o.textContent=l;s.appendChild(o);}); })();
 function diffLabel(text){ const w=(text.match(/[A-Za-z']+/g)||["x"]); const longr=w.filter(x=>x.length>6).length/w.length; const sents=(text.match(/[.!?]+/g)||[]).length||1; const idx=longr*100 + w.length/sents; return idx<40?"E":idx<48?"M":"H"; }
 function examArticles(){ return EXAM.map(p=>({title:p.topic, content:p.text, date:null, diff:diffLabel(p.text), site:"Exam-style"})); }
 async function loadFeed(feed, s){
@@ -422,26 +420,30 @@ async function loadFeed(feed, s){
   return out;
 }
 async function loadArticles(){
-  const sel=$("topic").value; store.set("jk_source",sel);
   const msg=x=>{ $("art-msg").textContent=x; };
-  if(sel==="exam"){ articles=examArticles(); fillDateAndArticles(); msg(articles.length+" offline exam-style passages."); return; }
-  if(sel==="custom"){ articles=customPassages.map(p=>({title:p.topic||"custom", content:p.text, date:null, diff:diffLabel(p.text), site:"My passages"})); fillDateAndArticles(); msg(articles.length?articles.length+" of your saved passages.":"No saved passages yet \u2014 add them under My passages."); return; }
-  const keys = sel==="all" ? ["conversation","mongabay","pib"] : [sel];
-  setLoading(true); msg("Loading articles from "+keys.length+" source(s)\u2026");
-  const jobs=[]; keys.forEach(k=>SOURCES[k].feeds.forEach(f=>jobs.push(loadFeed(f, SOURCES[k]))));
+  setLoading(true); msg("Fetching titles and dates from all sources\u2026");
+  const jobs=[];
+  ["conversation","mongabay","pib"].forEach(k=>SOURCES[k].feeds.forEach(f=>jobs.push(
+    loadFeed(f, SOURCES[k]).catch(()=>[])
+  )));
   let results=[]; try{ results=await Promise.all(jobs); }catch(e){ results=[]; }
   setLoading(false);
   articles=results.flat();
   articles.sort((a,b)=>(b.date?b.date.getTime():0)-(a.date?a.date.getTime():0));
-  if(!articles.length){ articles=examArticles(); fillDateAndArticles(); msg("Couldn't reach the live sources (proxy) \u2014 showing offline passages."); return; }
-  fillDateAndArticles(); msg(articles.length+" articles loaded. Pick a date and title, then Start.");
+  const live=articles.length;
+  articles=articles.concat(examArticles());          // offline always available under "Undated"
+  articles=articles.concat(customPassages.map(p=>({title:p.topic||"custom", content:p.text, date:null, diff:diffLabel(p.text), site:"My passages"})));
+  fillDateAndArticles();
+  msg(live ? live+" live articles across 3 sources \u2014 pick a date, then a title."
+           : "Live sources unreachable (proxy) \u2014 offline exam passages listed under Undated.");
 }
 function fillDateAndArticles(){
   const dates=[...new Set(articles.map(a=>a.date?a.date.toDateString():"Undated"))];
   const dsel=$("date"); dsel.innerHTML="";
   const anyO=document.createElement("option"); anyO.value="__any"; anyO.textContent="Any date"; dsel.appendChild(anyO);
-  dates.forEach(ds=>{ const o=document.createElement("option"); o.value=ds; o.textContent=(ds==="Undated"?"Undated":new Date(ds).toLocaleDateString(undefined,{weekday:"short",day:"2-digit",month:"short"})); dsel.appendChild(o); });
-  populateArticles(); loadSelectedPassage();
+  dates.forEach(ds=>{ const o=document.createElement("option"); o.value=ds; o.textContent=(ds==="Undated"?"Offline / exam-style":new Date(ds).toLocaleDateString(undefined,{weekday:"short",day:"2-digit",month:"short"})); dsel.appendChild(o); });
+  $("date").disabled=false; $("article").disabled=false;
+  populateArticles();
 }
 function populateArticles(){
   const ds=$("date").value||"__any", asel=$("article"); asel.innerHTML="";
@@ -513,7 +515,7 @@ function htmlToText(html){
     return d.textContent||""; }catch(e){ return html.replace(/<[^>]+>/g," "); }
 }
 function setLoading(on,msg){
-  $("btn-start").disabled=on; $("btn-load").disabled=on; $("topic").disabled=on; $("date").disabled=on; $("article").disabled=on;
+  $("btn-load").disabled=on; $("btn-load").textContent = on ? "Loading\u2026" : "Refresh";
   if(on){ passageEl.innerHTML='<span style="color:#8ba0af;font-style:italic">'+(msg||"Fetching latest passage…")+'</span>'; }
 }
 let noteTimer=null;
@@ -540,14 +542,14 @@ function renderPassage(){
 }
 
 /* ===== test control ===== */
-async function startFlow(){ if(!current||!current.text){ const ok=await loadSelectedPassage(); if(!ok){ showNote("Pick a topic and article first."); return; } } startTest(); }
+async function startFlow(){ if(!current||!current.text){ const ok=await loadSelectedPassage(); if(!ok){ showNote("Press Load, then pick an article first."); return; } } startTest(); }
 function startTest(){
   if(started) return;
   durSec=parseInt($("dur").value,10); remaining=durSec; finished=false;
   started=true; startTs=Date.now();
   input.disabled=false; input.value=""; input.focus();
   $("btn-start").disabled=true; $("btn-reset").disabled=false; $("btn-finish").disabled=false;
-  $("dur").disabled=$("topic").disabled=$("date").disabled=$("article").disabled=$("btn-load").disabled=true;
+  $("dur").disabled=$("date").disabled=$("article").disabled=$("btn-load").disabled=true;
   renderTime(); updateStats();
   tick=setInterval(()=>{ remaining=Math.max(0,durSec-Math.floor((Date.now()-startTs)/1000)); renderTime(); updateStats(); if(remaining<=0) finishTest(); },250);
 }
@@ -555,14 +557,14 @@ function armIdle(){
   clearInterval(tick); started=false; finished=false; remaining=durSec;
   input.value=""; input.disabled=true;
   $("btn-start").disabled=false; $("btn-reset").disabled=true; $("btn-finish").disabled=true;
-  $("dur").disabled=$("topic").disabled=$("date").disabled=$("article").disabled=$("btn-load").disabled=false;
+  $("dur").disabled=$("date").disabled=$("article").disabled=$("btn-load").disabled=false;
   renderTime(); resetHud();
 }
 function resetTest(){ armIdle(); renderPassage(); }
 function finishTest(){
   if(finished) return; finished=true; started=false; clearInterval(tick);
   input.disabled=true; $("btn-start").disabled=false; $("btn-reset").disabled=false; $("btn-finish").disabled=true;
-  $("dur").disabled=$("topic").disabled=$("date").disabled=$("article").disabled=$("btn-load").disabled=false;
+  $("dur").disabled=$("date").disabled=$("article").disabled=$("btn-load").disabled=false;
   showResults(computeStats());
 }
 
@@ -796,9 +798,8 @@ $("hist-clear").onclick=()=>{ store.set("jk_history","[]"); renderHistory(); };
 $("btn-start").onclick=startFlow;
 $("btn-reset").onclick=resetTest;
 $("btn-finish").onclick=()=>{ if(started) finishTest(); };
-$("topic").onchange=()=>{ if(!started){ armIdle(); loadArticles(); } };
-$("date").onchange=()=>{ if(!started){ populateArticles(); loadSelectedPassage(); } };
-$("article").onchange=()=>{ if(!started) loadSelectedPassage(); };
+$("date").onchange=()=>{ if(!started) populateArticles(); };
+$("article").onchange=()=>{ if(!started){ $("art-msg").textContent="Loading passage\u2026"; loadSelectedPassage().then(ok=>{ $("art-msg").textContent = ok ? "Passage ready \u2014 press Start." : "Couldn\u2019t load that article \u2014 try another."; }); } };
 $("btn-load").onclick=()=>{ if(!started){ armIdle(); loadArticles(); } };
 $("benchmark").addEventListener("input",()=>{ const v=parseFloat($("benchmark").value); benchmark=(!isNaN(v)&&v>0)?clampTop(v):0; store.set("jk_benchmark",benchmark); });
 $("cutoff").addEventListener("input",()=>{ const v=parseFloat($("cutoff").value); passCutoff=!isNaN(v)?Math.max(0,Math.min(20,v)):10; store.set("jk_cutoff",passCutoff); });
@@ -834,10 +835,9 @@ passageEl.addEventListener("click",()=>{ if(started) input.focus(); });
   try{ customPassages=JSON.parse(store.get("jk_custom")||"[]"); }catch(e){ customPassages=[]; }
   renderCustomList();
   durSec=remaining=600;
-  const savedSrc=store.get("jk_source"), validS=["all","conversation","mongabay","pib","exam","custom"];
-  $("topic").value = validS.includes(savedSrc)?savedSrc:"all";
+
   syncCalib(); renderTime(); resetHud(); renderHistory();
-  await loadArticles();
+  loadArticles();   // metadata only: titles + dates from all sources, in the background
   const b=store.get("jk_best"); if(b){ bestNet=parseFloat(b); $("best-val").textContent=Math.round(bestNet)+" wpm"; }
 })();
 </script>
