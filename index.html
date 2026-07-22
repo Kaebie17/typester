@@ -389,16 +389,29 @@ let current={name:"",src:"",text:"",diff:"Medium",autoTop:60,top:60};
 
 /* ===== source selector ===== */
 const SOURCES={
-  conversation:{kind:"atom", feeds:["https://theconversation.com/in/articles.atom"], site:"The Conversation"},
-  mongabay:{kind:"rss", feeds:["https://india.mongabay.com/feed/"], site:"Mongabay India"},
-  pib:{kind:"pib", feeds:["https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=1"], site:"PIB"}
+  pib:{kind:"pib", site:"PIB", feeds:[
+    "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=1",
+    "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3",
+    "https://www.pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=1"
+  ]},
+  conversation:{kind:"atom", site:"The Conversation", feeds:[
+    "https://theconversation.com/in/articles.atom",
+    "https://theconversation.com/in/business/articles.atom",
+    "https://theconversation.com/articles.atom"
+  ]},
+  mongabay:{kind:"rss", site:"Mongabay India", feeds:[
+    "https://india.mongabay.com/feed/"
+  ]}
 };
+const srcStatus={};
 let articles=[];
 function diffLabel(text){ const w=(text.match(/[A-Za-z']+/g)||["x"]); const longr=w.filter(x=>x.length>6).length/w.length; const sents=(text.match(/[.!?]+/g)||[]).length||1; const idx=longr*100 + w.length/sents; return idx<40?"E":idx<48?"M":"H"; }
 function examArticles(){ return EXAM.map(p=>({title:p.topic, content:p.text, date:null, diff:diffLabel(p.text), site:"Exam-style"})); }
 async function loadFeed(feed, s){
-  const xml=await fetchViaProxy(feed); if(!xml) return [];
-  let doc; try{ doc=new DOMParser().parseFromString(xml,"text/xml"); }catch(e){ return []; }
+  const xml=await fetchViaProxy(feed);
+  if(!xml){ srcStatus[s.site]="blocked"; return []; }
+  let doc; try{ doc=new DOMParser().parseFromString(xml,"text/xml"); }catch(e){ srcStatus[s.site]="bad xml"; return []; }
+  if(doc.querySelector("parsererror")){ srcStatus[s.site]="bad xml"; return []; }
   const out=[];
   if(s.kind==="atom"){
     Array.from(doc.querySelectorAll("entry")).forEach(e=>{
@@ -411,31 +424,39 @@ async function loadFeed(feed, s){
   } else {
     Array.from(doc.querySelectorAll("item")).forEach(it=>{
       const g=n=>{const x=it.querySelector(n);return x?x.textContent.trim():"";};
-      const enc=it.getElementsByTagName("content:encoded")[0]; const hasFull=!!(enc&&enc.textContent&&enc.textContent.length>400);
+      const enc=it.getElementsByTagName("content:encoded")[0];
+      const hasFull=!!(enc&&enc.textContent&&enc.textContent.length>400);
       const content=htmlToText(hasFull?enc.textContent:g("description")); const title=g("title"); if(!title) return;
       const dt=g("pubDate"); const d=dt?new Date(dt):null;
-      out.push({title, link:g("link"), content, date:(d&&!isNaN(d))?d:null, diff:(!hasFull&&s.kind==="pib")?("~"+diffLabel(content||title)):diffLabel(content||title), site:s.site, needsFetch:(s.kind==="pib"&&!hasFull)});
+      const needs=(s.kind==="pib"&&!hasFull);
+      out.push({title, link:g("link"), content, date:(d&&!isNaN(d))?d:null,
+                diff:needs?("~"+diffLabel(content||title)):diffLabel(content||title), site:s.site, needsFetch:needs});
     });
   }
+  srcStatus[s.site]= out.length? (out.length+" ok") : "empty feed";
   return out;
 }
+async function loadSource(key){
+  const s=SOURCES[key];
+  for(const f of s.feeds){
+    try{ const r=await loadFeed(f,s); if(r.length) return r; }catch(e){ srcStatus[s.site]="error"; }
+  }
+  return [];
+}
 async function loadArticles(){
-  const msg=x=>{ $("art-msg").textContent=x; };
-  setLoading(true); msg("Fetching titles and dates from all sources\u2026");   // status line only
-  const jobs=[];
-  ["conversation","mongabay","pib"].forEach(k=>SOURCES[k].feeds.forEach(f=>jobs.push(
-    loadFeed(f, SOURCES[k]).catch(()=>[])
-  )));
-  let results=[]; try{ results=await Promise.all(jobs); }catch(e){ results=[]; }
+  const msg=x=>{ $("art-msg").innerHTML=x; };
+  setLoading(true); msg("Fetching titles and dates from all sources\u2026");
+  const keys=["pib","conversation","mongabay"];
+  let results=[]; try{ results=await Promise.all(keys.map(k=>loadSource(k))); }catch(e){ results=[]; }
   setLoading(false);
-  articles=results.flat();
+  const live=results.flat();
+  articles=live.concat(examArticles());
   articles.sort((a,b)=>(b.date?b.date.getTime():0)-(a.date?a.date.getTime():0));
-  const live=articles.length;
-  articles=articles.concat(examArticles());          // offline always available under "Undated"
-  articles=articles.concat(customPassages.map(p=>({title:p.topic||"custom", content:p.text, date:null, diff:diffLabel(p.text), site:"My passages"})));
   fillDateAndArticles();
-  msg(live ? live+" live articles across 3 sources \u2014 pick a date, then a title."
-           : "Live sources unreachable (proxy) \u2014 offline exam passages listed under Undated.");
+  const parts=keys.map(k=>{ const st=SOURCES[k].site; const v=srcStatus[st]||"no response";
+    const ok=/ok$/.test(v); return '<span style="color:'+(ok?"#4ade80":"#ff8f6b")+'">'+st+": "+v+"</span>"; });
+  msg(live.length ? (live.length+" live titles \u00b7 "+parts.join(" \u00b7 "))
+                  : ("No live titles \u00b7 "+parts.join(" \u00b7 ")+" \u2014 offline passages listed instead."));
 }
 function fillDateAndArticles(){
   const dates=[...new Set(articles.map(a=>a.date?a.date.toDateString():"Undated"))];
