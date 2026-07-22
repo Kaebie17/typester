@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JK TypeTest — JKSSB Junior Assistant Typing Practice</title>
+<title>Typester — JKSSB Junior Assistant Typing Practice</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -390,6 +390,7 @@ let current={name:"",src:"",text:"",diff:"Medium",autoTop:60,top:60};
 /* ===== source selector ===== */
 const SOURCES={
   pib:{kind:"pib", site:"PIB", feeds:[
+    "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3&reg=3",
     "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3",
     "https://www.pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3",
     "https://pib.gov.in/ViewRss.aspx?reg=3&lang=1"
@@ -397,7 +398,8 @@ const SOURCES={
   conversation:{kind:"atom", site:"The Conversation IN", feeds:[
     "https://theconversation.com/in/articles.atom",
     "https://theconversation.com/in/business/articles.atom",
-    "https://theconversation.com/in/politics/articles.atom"
+    "https://theconversation.com/in/politics/articles.atom",
+    "https://theconversation.com/in/articles.rss"
   ]},
   mongabay:{kind:"rss", site:"Mongabay India", feeds:[
     "https://india.mongabay.com/feed/"
@@ -411,10 +413,11 @@ let articles=[];
 function diffLabel(text){ const w=(text.match(/[A-Za-z']+/g)||["x"]); const longr=w.filter(x=>x.length>6).length/w.length; const sents=(text.match(/[.!?]+/g)||[]).length||1; const idx=longr*100 + w.length/sents; return idx<40?"E":idx<48?"M":"H"; }
 function examArticles(){ return EXAM.map(p=>({title:p.topic, content:p.text, date:null, diff:diffLabel(p.text), site:"Exam-style"})); }
 async function loadFeed(feed, s){
-  const xml=await fetchViaProxy(feed);
-  if(!xml){ srcStatus[s.site]="blocked"; return []; }
-  let doc; try{ doc=new DOMParser().parseFromString(xml,"text/xml"); }catch(e){ srcStatus[s.site]="bad xml"; return []; }
-  if(doc.querySelector("parsererror")){ srcStatus[s.site]="bad xml"; return []; }
+  const xml=await fetchViaProxy(feed, looksLikeFeed);
+  if(!xml){ srcStatus[s.site]="blocked \u2014 got: "+(lastSnippet||"nothing"); return []; }
+  const clean=xml.replace(/^[\uFEFF\s]+/,"").replace(/^[^<]+/,"");
+  let doc; try{ doc=new DOMParser().parseFromString(clean,"text/xml"); }catch(e){ srcStatus[s.site]="bad xml"; return []; }
+  if(doc.querySelector("parsererror")){ doc=new DOMParser().parseFromString(clean,"text/html"); if(!doc.querySelector("item,entry")){ srcStatus[s.site]="bad xml \u2014 got: "+clean.replace(/\s+/g," ").slice(0,90); return []; } }
   const out=[];
   if(s.kind==="atom"){
     Array.from(doc.querySelectorAll("entry")).forEach(e=>{
@@ -528,9 +531,19 @@ function middleChunk(sents,target){
   return out.join(" ");
 }
 const PROXIES=[u=>"/api/fetch?url="+encodeURIComponent(u), u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u), u=>"https://corsproxy.io/?url="+encodeURIComponent(u)];
-async function fetchViaProxy(url){
+let lastSnippet="";
+function looksLikeFeed(t){ if(!t) return false; const h=t.slice(0,1500).toLowerCase();
+  return h.indexOf("<rss")>=0||h.indexOf("<feed")>=0||h.indexOf("<channel")>=0||h.indexOf("<?xml")>=0; }
+async function fetchViaProxy(url, validate){
+  const check = validate || (()=>true);
   for(const p of PROXIES){
-    try{ const r=await fetch(p(url)); if(r.ok){ const txt=await r.text(); if(txt && txt.length>300) return txt; } }catch(e){}
+    try{
+      const r=await fetch(p(url));
+      if(!r.ok){ lastSnippet="HTTP "+r.status; continue; }
+      const txt=await r.text();
+      if(txt && txt.length>200 && check(txt)) return txt;
+      lastSnippet=(txt||"").replace(/\s+/g," ").slice(0,110);
+    }catch(e){ lastSnippet="network error"; }
   }
   return null;
 }
