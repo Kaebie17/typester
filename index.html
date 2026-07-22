@@ -112,7 +112,13 @@
   .hist-head{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--line-dk);font-family:var(--font-brand);font-weight:600;font-size:13px;color:#cfe0d9}
   .btn-tiny{background:rgba(255,255,255,.06);color:#a9bccb;font-size:11.5px;padding:5px 11px;border-radius:8px;border:1px solid var(--line-dk)}
   .btn-tiny:hover{background:rgba(255,255,255,.12);color:#fff}
-  .hist-rows{display:flex;flex-direction:column}
+  .hist-summary{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--line-dk);border-bottom:1px solid var(--line-dk)}
+  .hsum{background:rgba(255,255,255,.03);padding:10px 12px;text-align:center}
+  .hsum .k{font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:#7e93a2;font-weight:600}
+  .hsum .v{font-family:var(--font-mono);font-size:17px;font-weight:600;color:#eaf3f1;margin-top:2px}
+  .hsum .v small{font-size:10px;color:#7e93a2}
+  @media(max-width:640px){ .hist-summary{grid-template-columns:repeat(3,1fr)} }
+  .hist-rows{display:flex;flex-direction:column;max-height:420px;overflow-y:auto}
   .hrow{display:grid;grid-template-columns:118px 1fr auto;gap:10px;align-items:center;padding:9px 18px;border-bottom:1px solid rgba(255,255,255,.05);font-size:12.5px}
   .hrow:last-child{border-bottom:none}
   .hrow .when{color:#7e93a2;font-family:var(--font-mono);font-size:11px}
@@ -274,6 +280,7 @@
 
   <div class="hist" id="hist" style="display:none">
     <div class="hist-head"><span>Recent attempts <span id="hist-count" style="opacity:.7;font-weight:500"></span></span><span style="display:flex;gap:6px"><button id="hist-export" class="btn-tiny">Export</button><button id="hist-import" class="btn-tiny">Import</button><button id="hist-clear" class="btn-tiny">Clear</button></span></div>
+    <div class="hist-summary" id="hist-summary"></div>
     <div class="hist-rows" id="hist-rows"></div>
   </div>
 
@@ -879,6 +886,24 @@ function marksFor(a){
           passApp: floorOK && mApp>=passCutoff,
           passBm:  mBm!=null ? (floorOK && mBm>=passCutoff) : null};
 }
+function renderSummary(h){
+  const el=document.getElementById("hist-summary"); if(!el) return;
+  const n=h.length||1;
+  const avg=arr=>arr.reduce((a,b)=>a+b,0)/arr.length;
+  const nets=h.map(a=>a.net||0), accs=h.map(a=>a.acc||0);
+  const ms=h.map(a=>marksFor(a));
+  const appVals=ms.map(m=>m.mApp).filter(v=>v!=null&&isFinite(v));
+  const bmVals=ms.map(m=>m.mBm).filter(v=>v!=null&&isFinite(v));
+  const bestNetV=Math.max.apply(null,nets);
+  const avgAcc=avg(accs);
+  el.innerHTML=
+    cell("Attempts", n) +
+    cell("Avg net", Math.round(avg(nets)), "wpm") +
+    cell("Best net", bestNetV, "wpm") +
+    cell("Avg accuracy", avgAcc.toFixed(1)+"%", "err "+(100-avgAcc).toFixed(1)+"%") +
+    cell("Avg marks", (appVals.length?avg(appVals).toFixed(1):"\u2014") + (bmVals.length?" / "+avg(bmVals).toFixed(1):""), bmVals.length?"app / bench":"app");
+  function cell(k,v,u){ return '<div class="hsum"><div class="k">'+k+'</div><div class="v">'+v+(u?' <small>'+u+'</small>':'')+'</div></div>'; }
+}
 function renderHistory(){
   const h=loadHistory(), box=$("hist"), rows=$("hist-rows");
   const cEl=document.getElementById("hist-count");
@@ -889,7 +914,8 @@ function renderHistory(){
   }
   if(!h.length){ box.style.display="none"; return; }
   box.style.display="block";
-  rows.innerHTML=h.slice(0,10).map(a=>{
+  renderSummary(h);
+  rows.innerHTML=h.map(a=>{
     const d=new Date(a.t), when=d.toLocaleDateString(undefined,{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
     const m=marksFor(a);
     const mk = m.mBm!=null ? (m.mApp.toFixed(1)+"/"+m.mBm.toFixed(1)) : m.mApp.toFixed(1);
