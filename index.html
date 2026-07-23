@@ -242,6 +242,7 @@
       </div>
       <div class="spacer"></div>
       <button class="btn-ghost" id="btn-load">Refresh</button>
+      <button class="btn-ghost" id="btn-clearcache" title="Clear cached passages and re-fetch everything">Reset cache</button>
       <button class="btn-ghost" id="btn-finish" disabled>Finish</button>
       <button class="btn-ghost" id="btn-reset" disabled>Reset</button>
       <button class="btn-primary" id="btn-start">Start test</button>
@@ -479,6 +480,7 @@ async function listFromFeeds(src, date){
     const xml=await fetchViaProxy(feed, looksLikeFeed);
     if(!xml){
       const snip=(lastSnippet||"").toLowerCase();
+      if(snip.indexOf("allowlist_block")>=0){ srcStatus[src.site]="proxy allowlist blocked — redeploy api/fetch.js"; continue; }
       srcStatus[src.site] = /404|not found|page not found/.test(snip) ? "bad URL (404)"
         : /403|forbidden|denied|captcha|cloudflare/.test(snip) ? "refused by site (403)"
         : /^http \d/.test(snip) ? snip.toUpperCase()
@@ -673,35 +675,41 @@ async function refreshSources(msg){
   if(refreshing) return; refreshing=true;
   setLoading(true);
   const seen=loadSeen();
-  let added=0;
+  let discovered=0, tried=0, fetchFail=0, tooShort=0, added=0;
   try{
     const lists=await Promise.all(SOURCES.map(src=>src.list(null).catch(()=>[])));
     const pending=[];
     lists.forEach(items=>items.forEach(it=>{
+      discovered++;
       const key=hashId(it.url||it.headline);
-      if(seen.has(key)) return;                     // 2. already processed -> never downloaded again
+      if(seen.has(key)) return;                       // already processed -> never downloaded again
       pending.push({key, it});
     }));
     const cache=loadCache();
-    for(const {key,it} of pending.slice(0,24)){     // bounded per refresh
+    for(const {key,it} of pending.slice(0,20)){
+      tried++;
       let raw=it.inline||"";
-      if(raw.split(/\s+/).length<MINW && it.url){
+      if(words(htmlToText(raw)).length<MINW && it.url){       // count TEXT words, not HTML
         const src=SOURCES.find(x=>x.id===it.sourceId);
-        if(src) raw=await src.fetch(it.url);        // 3. download only NEW articles
+        if(src) raw=await src.fetch(it.url);
       }
-      const recs=makePassageRecords(it, htmlToText(raw));
-      seen.add(key);
-      if(recs.length){ recs.forEach(r=>cache.push(r)); added+=recs.length; }
+      const text=htmlToText(raw);
+      if(words(text).length<60){ fetchFail++; continue; }     // fetch failed -> do NOT mark seen, retry next time
+      const recs=makePassageRecords(it, text);
+      if(recs.length){ recs.forEach(r=>cache.push(r)); added+=recs.length; seen.add(key); }
+      else { tooShort++; seen.add(key); }                     // genuinely too short -> don't retry
     }
     const uniq=[]; const ids=new Set();
-    cache.forEach(r=>{ if(r&&r.id&&!ids.has(r.id)){ ids.add(r.id); uniq.push(r); } });   // 4. merge
-    saveCache(uniq); saveSeen(seen);                // 5. save
-  }catch(e){}
+    cache.forEach(r=>{ if(r&&r.id&&!ids.has(r.id)){ ids.add(r.id); uniq.push(r); } });
+    saveCache(uniq); saveSeen(seen);
+  }catch(e){ if(msg) msg("Refresh error: "+e.message); }
   setLoading(false); refreshing=false;
   rebuildList();
-  const parts=SOURCES.map(sc=>{ const v=srcStatus[sc.site]||"no response"; const ok=/ok$/.test(v);
+  const parts=SOURCES.map(sc=>{ const v=srcStatus[sc.site]||"no response"; const ok=/ok/.test(v);
     return '<span style="color:'+(ok?"#4ade80":"#ff8f6b")+'">'+sc.site+": "+v+"</span>"; });
-  if(msg) msg(loadCache().length+" passages cached ("+added+" new) \u00b7 "+parts.join(" \u00b7 "));
+  if(msg) msg("<b>"+loadCache().length+" passages cached</b> \u00b7 "+discovered+" articles found, "+tried+" tried, "+
+    added+" passages made"+(fetchFail?", <span style=\"color:#ff8f6b\">"+fetchFail+" article fetches blocked</span>":"")+
+    (tooShort?", "+tooShort+" too short":"")+"<br>"+parts.join(" \u00b7 "));
 }
 function fillDateAndArticles(){
   const dates=[...new Set(articles.map(a=>a.date?new Date(a.date).toDateString():"Undated"))];
@@ -789,7 +797,11 @@ async function fetchViaProxy(url, validate){
   for(const p of PROXIES){
     try{
       const r=await fetch(p(url));
-      if(!r.ok){ lastSnippet="HTTP "+r.status; continue; }
+      if(!r.ok){
+        let body=""; try{ body=(await r.text()||"").replace(/\s+/g," ").slice(0,120); }catch(e){}
+        lastSnippet="HTTP "+r.status+(body?" "+body:"");     // keep body so ALLOWLIST_BLOCK is visible
+        continue;
+      }
       const txt=await r.text();
       if(txt && txt.length>200 && check(txt)) return txt;
       lastSnippet=(txt||"").replace(/\s+/g," ").slice(0,110);
@@ -1168,6 +1180,10 @@ $("btn-finish").onclick=()=>{ if(started) finishTest(); };
 $("date").onchange=()=>{ if(!started) populateArticles(); };
 $("article").onchange=()=>{ if(!started){ $("art-msg").textContent="Loading passage\u2026"; loadSelectedPassage().then(ok=>{ $("art-msg").textContent = ok ? "Passage ready \u2014 press Start." : "Couldn\u2019t load that article \u2014 try another."; }); } };
 $("btn-load").onclick=()=>{ if(!started){ armIdle(); loadArticles(); } };
+$("btn-clearcache").onclick=()=>{ if(started) return;
+  store.set("jk_cache","[]"); store.set("jk_seen","[]");
+  $("art-msg").textContent="Cache cleared \u2014 re-fetching all articles\u2026";
+  armIdle(); loadArticles(); };
 $("benchmark").addEventListener("input",()=>{ const v=parseFloat($("benchmark").value); benchmark=(!isNaN(v)&&v>0)?clampTop(v):0; store.set("jk_benchmark",benchmark); renderHistory(); });
 $("cutoff").addEventListener("input",()=>{ const v=parseFloat($("cutoff").value); passCutoff=!isNaN(v)?Math.max(0,Math.min(20,v)):10; store.set("jk_cutoff",passCutoff); renderHistory(); });
 $("dur").onchange=e=>{ if(!started){ durSec=remaining=parseInt(e.target.value,10); renderTime(); } };

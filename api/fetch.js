@@ -5,15 +5,11 @@
 
 const ALLOW_HOSTS = [
   "pib.gov.in",
-  "www.pib.gov.in",
   "rbi.org.in",
-  "www.rbi.org.in",
   "prsindia.org",
-  "www.prsindia.org",
-  "news.un.org",
-  "blogs.worldbank.org",
-  "api.gdeltproject.org",
-  "www.worldbank.org",
+  "un.org",
+  "worldbank.org",
+  "gdeltproject.org",
 ];
 
 const MAX_BYTES = 2_000_000;   // 2 MB cap on relayed content
@@ -62,8 +58,12 @@ export default async function handler(req, res) {
   if (isBlockedHost(target.hostname)) {
     return res.status(403).send("blocked host");
   }
-  if (!ALLOW_HOSTS.includes(target.hostname)) {
-    return res.status(403).send("host not on allowlist");
+  const host = target.hostname.toLowerCase();
+  const allowed = ALLOW_HOSTS.some(
+    (h) => host === h || host.endsWith("." + h)      // permit subdomains of allowed domains
+  );
+  if (!allowed) {
+    return res.status(403).send("ALLOWLIST_BLOCK: " + host + " not permitted");
   }
 
   const controller = new AbortController();
