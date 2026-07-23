@@ -674,7 +674,8 @@ async function loadArticles(){                      // kept name: called by init
 async function refreshSources(msg){
   if(refreshing) return; refreshing=true;
   setLoading(true);
-  const seen=loadSeen();
+  let seen=loadSeen();
+  if(loadCache().length===0 && seen.size>0){ seen=new Set(); saveSeen(seen); }   // self-heal poisoned seen list
   let discovered=0, tried=0, fetchFail=0, tooShort=0, added=0;
   try{
     const lists=await Promise.all(SOURCES.map(src=>src.list(null).catch(()=>[])));
@@ -707,7 +708,10 @@ async function refreshSources(msg){
   rebuildList();
   const parts=SOURCES.map(sc=>{ const v=srcStatus[sc.site]||"no response"; const ok=/ok/.test(v);
     return '<span style="color:'+(ok?"#4ade80":"#ff8f6b")+'">'+sc.site+": "+v+"</span>"; });
-  if(msg) msg("<b>"+loadCache().length+" passages cached</b> \u00b7 "+discovered+" articles found, "+tried+" tried, "+
+  const proxyNote = ownProxyOk===true ? '<span style="color:#4ade80">proxy: own /api/fetch ok</span>'
+    : ownProxyOk===false ? '<span style="color:#ff8f6b">proxy: /api/fetch FAILED \u2014 using public fallback (deploy api/fetch.js)</span>'
+    : '<span style="color:#8ba0af">proxy: unknown</span>';
+  if(msg) msg(proxyNote+"<br><b>"+loadCache().length+" passages cached</b> \u00b7 "+discovered+" articles found, "+tried+" tried, "+
     added+" passages made"+(fetchFail?", <span style=\"color:#ff8f6b\">"+fetchFail+" article fetches blocked</span>":"")+
     (tooShort?", "+tooShort+" too short":"")+"<br>"+parts.join(" \u00b7 "));
 }
@@ -789,24 +793,30 @@ function cleanSentences(ex){
   return out;
 }
 const PROXIES=[u=>"/api/fetch?url="+encodeURIComponent(u), u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u), u=>"https://corsproxy.io/?url="+encodeURIComponent(u)];
-let lastSnippet="";
+let lastSnippet="", ownProxyOk=null;
 function looksLikeFeed(t){ if(!t) return false; const h=t.slice(0,1500).toLowerCase();
   return h.indexOf("<rss")>=0||h.indexOf("<feed")>=0||h.indexOf("<channel")>=0||h.indexOf("<?xml")>=0; }
 async function fetchViaProxy(url, validate){
   const check = validate || (()=>true);
-  for(const p of PROXIES){
+  const names=["own /api/fetch","allorigins","corsproxy"];
+  const log=[];
+  for(let i=0;i<PROXIES.length;i++){
+    const label=names[i]||("proxy"+i);
     try{
-      const r=await fetch(p(url));
+      const r=await fetch(PROXIES[i](url));
       if(!r.ok){
-        let body=""; try{ body=(await r.text()||"").replace(/\s+/g," ").slice(0,120); }catch(e){}
-        lastSnippet="HTTP "+r.status+(body?" "+body:"");     // keep body so ALLOWLIST_BLOCK is visible
+        let body=""; try{ body=(await r.text()||"").replace(/\s+/g," ").slice(0,90); }catch(e){}
+        log.push(label+": HTTP "+r.status+(body?" "+body:""));
+        if(i===0) ownProxyOk=false;
         continue;
       }
       const txt=await r.text();
-      if(txt && txt.length>200 && check(txt)) return txt;
-      lastSnippet=(txt||"").replace(/\s+/g," ").slice(0,110);
-    }catch(e){ lastSnippet="network error"; }
+      if(txt && txt.length>200 && check(txt)){ if(i===0) ownProxyOk=true; return txt; }
+      log.push(label+": unusable "+(txt||"").replace(/\s+/g," ").slice(0,70));
+      if(i===0) ownProxyOk=false;
+    }catch(e){ log.push(label+": "+(e.message||"network error")); if(i===0) ownProxyOk=false; }
   }
+  lastSnippet=log.join(" | ");
   return null;
 }
 function htmlToText(html){
