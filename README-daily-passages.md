@@ -116,6 +116,38 @@ provider's current policy — if that happens the panel says so explicitly and t
 deploy the server route rather than showing a bare network error. And a key in a public page
 is a billable key anyone can read, so this path is for personal use on your own machine.
 
+## What persists, and for how long
+
+Everything generated is kept in `jk_cache` in localStorage, tagged with the India date it
+was generated for. Nothing expires on a schedule — a passage from three weeks ago is still
+in the date dropdown, which lists days newest-first with a count beside each.
+
+### Retention
+
+Memory is freed by *use*, not by age alone:
+
+- A passage you have **typed** is cleared `KEEP_ATTEMPTED_DAYS` (2) days later. It has done
+  its job, and its title, speed and accuracy remain in the History table.
+- A passage you have **not typed** is never dropped by age. It is still owed to you, however
+  old it is — a backlog from three weeks ago stays practisable.
+
+`markAttempted()` stamps the record when a run finishes; `sweepAttempted()` runs once per
+page load and reports how many it cleared.
+
+`CACHE_MAX` (800) remains only as a hard ceiling. If it is ever reached, attempted passages
+are shed first and untouched ones last, so overflow can never cost you unpractised material.
+On a storage-quota error the save sheds the oldest half and retries rather than failing.
+
+### Headline caching
+
+The server hands its chosen headlines back to the client on **every** outcome — success,
+model failure, quota refusal, timeout. The client stores them under `jk_ai_heads` for that
+day and sends them back on the next attempt, so a retry after a provider failure costs
+**zero feed requests**. The status line says `supplied by client (N cached headlines, no
+feeds fetched)` when that path is taken.
+
+The store holds one day only; a new day replaces it rather than accumulating.
+
 ## Notes
 
 - If passages look thin toward the end of the set, lower **Headlines / day** or **Passages

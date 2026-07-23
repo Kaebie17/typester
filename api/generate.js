@@ -33,8 +33,9 @@ const DEFAULT_MODEL = {
 };
 
 const MAX_TOKENS = Number(process.env.AI_MAX_TOKENS || 32000);
-const MIN_WORDS = 420;
-const MAX_WORDS = 480;
+const MIN_WORDS = 420;      // hard floor: the app discards anything shorter
+const TARGET_WORDS = 500;   // asked-for target, deliberately above the floor because
+                            // models undershoot stated word counts almost every time
 const MAX_HEADLINES = 10;
 const MAX_VARIANTS = 3;
 const FEED_TIMEOUT_MS = 8000;
@@ -275,14 +276,18 @@ function buildPrompt(headlines, day, variants) {
     "different words. Treat the headline as a starting point and write about the wider subject it belongs to.",
     "",
     "RULES FOR EVERY PASSAGE",
-    "1. Length: between " + MIN_WORDS + " and " + MAX_WORDS + " words. Aim for 445 to 465 words. This is a hard requirement; count carefully.",
+    "1. Length: aim for about " + TARGET_WORDS + " words. The finished passage must NEVER be shorter than " + MIN_WORDS + " words:",
+    "   anything shorter is thrown away and the work is wasted. Running slightly long is fine, running short is not.",
+    "   Do not wind up early. If you are near the end and short of length, add another substantive paragraph.",
     "2. Completely new, self-contained explanatory writing. Do not summarise any news report and do not merely restate the headline.",
     "3. Tone: neutral, factual, impersonal newspaper prose in clear Indian English. No opinions, no advocacy, no predictions, no rhetorical questions, no direct address to the reader.",
     "4. No quotations of any kind. Never attribute a statement to a named person or body. Do not invent figures, dates, rupee amounts, percentages or case names. Prefer established general background over specific numbers you cannot verify.",
     "5. Plain continuous prose only. No markdown, no headings, no bullet points, no numbered lists, no bold or italic marks, no emoji, no URLs, no parenthetical citations.",
     "6. Plain ASCII characters only: straight quotes and apostrophes, ordinary hyphens, no em dashes, no curly quotes, no rupee symbol (write Rs. instead).",
     "7. Typing-test readability: complete sentences of ordinary length, ordinary punctuation, no long strings of capitals, no more than a light sprinkling of abbreviations, and no tables or figures.",
-    "8. Three to five paragraphs of flowing text, joined into a single continuous string separated by ordinary spaces.",
+    "8. Write FIVE paragraphs of roughly 100 words each, which is about six to seven sentences per paragraph.",
+    "   Join them into a single continuous string separated by ordinary spaces. Counting paragraphs and sentences",
+    "   is more reliable than counting words, so use that as your guide to reaching the length.",
     "",
     "TITLE",
     "Every passage gets its own descriptive title of four to nine words saying what that passage is actually about.",
@@ -530,18 +535,43 @@ export default async function handler(req, res) {
   const variants = Math.max(1, Math.min(MAX_VARIANTS, Number(body.variants) || 2));
   const knownSignature = String(body.knownSignature || "");
 
-  const { all, status } = await collectHeadlines();
-  if (!all.length) return res.status(502).json({ error: "no headline feed could be reached", feeds: status });
+  // A caller that already has today's headlines (because a previous attempt got
+  // that far and then failed at the model step) can send them back, so a retry
+  // costs no feed requests at all.
+  let picked = null, status = "";
+  const supplied = Array.isArray(body.headlines) ? body.headlines : null;
+  if (supplied && supplied.length >= 3) {
+    picked = supplied
+      .map((x) => {
+        const headline = normalizeHeadline(typeof x === "string" ? x : (x && x.headline));
+        if (!headline) return null;
+        const site = String((x && x.site) || "cached").slice(0, 40);
+        const date = (x && x.date && !isNaN(new Date(x.date))) ? new Date(x.date).toISOString() : null;
+        return { headline, site, weight: 1, date, keywords: keywordsOf(headline) };
+      })
+      .filter(Boolean)
+      .slice(0, MAX_HEADLINES);
+    if (picked.length < 3) picked = null;
+    else status = "supplied by client (" + picked.length + " cached headlines, no feeds fetched)";
+  }
 
-  const picked = pickHeadlines(all, count);
+  if (!picked) {
+    const got = await collectHeadlines();
+    status = got.status;
+    if (!got.all.length)
+      return res.status(502).json({ error: "no headline feed could be reached", stage: "feeds", feeds: status });
+    picked = pickHeadlines(got.all, count);
+  }
   const signature = signatureOf(picked);
+  const headlineOut = picked.map((h) => ({ headline: h.headline, site: h.site, date: h.date }));
 
   if (knownSignature && knownSignature === signature) {
-    return res.status(200).json({ day, signature, unchanged: true, feeds: status, provider, model, count: 0, passages: [] });
+    return res.status(200).json({ day, signature, unchanged: true, feeds: status, provider, model,
+                                 headlines: headlineOut, count: 0, passages: [] });
   }
 
   if (budget.day !== day) { budget.day = day; budget.used = 0; }
-  if (budget.used >= LIMIT) return res.status(429).json({ error: "daily generation budget reached on this instance" });
+  if (budget.used >= LIMIT) return res.status(429).json({ error: "daily generation budget reached on this instance", stage: "budget", feeds: status, signature, headlines: headlineOut });
   budget.used++;
 
   const controller = new AbortController();
@@ -555,7 +585,7 @@ export default async function handler(req, res) {
     if (!items) {
       return res.status(502).json({
         error: "model did not return usable JSON",
-        provider, model,
+        stage: "model", provider, model, feeds: status, signature, headlines: headlineOut,
         sample: String(out.text || "").replace(/\s+/g, " ").slice(0, 200)
       });
     }
@@ -568,16 +598,25 @@ export default async function handler(req, res) {
         difficulty: /^(Easy|Medium|Hard)$/.test(String(it && it.difficulty)) ? it.difficulty : "Medium",
         passage: String((it && (it.passage || it.text || it.body)) || "")
       }))
-      .filter((p) => p.passage.split(/\s+/).filter(Boolean).length >= 300);
+      // Floor only. Nothing is rejected for being long: the client applies the real
+      // 420-word gate, and an over-length passage is simply more typing practice.
+      .filter((p) => p.passage.split(/\s+/).filter(Boolean).length >= 250);
 
-    if (!passages.length) return res.status(502).json({ error: "no usable passages in model output", provider, model });
+    if (!passages.length) {
+      const counts = items.map((it) => String((it && (it.passage || it.text || it.body)) || "")
+        .split(/\s+/).filter(Boolean).length).sort((a, b) => a - b);
+      return res.status(502).json({
+        error: "no usable passages in model output", stage: "model", provider, model, feeds: status,
+        signature, headlines: headlineOut, returned: items.length, wordCounts: counts
+      });
+    }
 
     return res.status(200).json({
       day, signature, unchanged: false,
       provider, model, feeds: status, variants,
       expected: picked.length * variants,
       truncated: !!out.truncated,
-      headlines: picked.map((h) => ({ headline: h.headline, site: h.site, date: h.date })),
+      headlines: headlineOut,
       count: passages.length,
       passages
     });
@@ -589,7 +628,7 @@ export default async function handler(req, res) {
     const badModel = /404|model|not.?found|does not exist|unsupported/i.test(msg);
     return res.status(aborted ? 504 : 502).json({
       error: aborted ? "model request timed out" : msg.slice(0, 400),
-      provider, model,
+      stage: "model", provider, model, feeds: status, signature, headlines: headlineOut,
       hint: badModel ? "check the model id with GET /api/generate?models=1 and set AI_MODEL" : undefined
     });
   }

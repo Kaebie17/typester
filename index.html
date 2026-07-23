@@ -444,7 +444,7 @@ function buildCurrent(name,src,text,forcedDiff){
 /* ===== state ===== */
 let started=false,finished=false,startTs=0,durSec=600,remaining=600,tick=null,wordSpans=[],passageWords=[];
 let bestNet=0, calib=0, benchmark=0, passCutoff=10, customPassages=[];
-let current={name:"",src:"",text:"",diff:"Medium",autoTop:60,top:60};
+let current={id:"",name:"",src:"",text:"",diff:"Medium",autoTop:60,top:60};
 
 /* ===== deterministic passage pipeline: article -> paragraphs -> sentences -> 420-480w ===== */
 const MINW=420, MAXW=480;
@@ -542,10 +542,51 @@ function makeTitle(headline, text, index, used){
 }
 
 /* ===== passage records + cache ===== */
-const CACHE_KEY="jk_cache";
+const CACHE_KEY="jk_cache", CACHE_MAX=800;
+/* Retention. A passage you have actually typed has done its job, and its title,
+   speed and accuracy live on in the history table, so the text itself can go.
+   A passage you have NOT typed yet is still owed to you and is never dropped by
+   age - only by the hard CACHE_MAX ceiling, and even then attempted ones go first. */
+const KEEP_ATTEMPTED_DAYS=2;
 function hashId(str){ let h=5381; for(let i=0;i<str.length;i++){ h=((h<<5)+h+str.charCodeAt(i))>>>0; } return h.toString(36); }
 function loadCache(){ try{ return JSON.parse(store.get(CACHE_KEY)||"[]"); }catch(e){ return []; } }
-function saveCache(arr){ store.set(CACHE_KEY, JSON.stringify(arr.slice(0,800))); }
+/* called when a run finishes: the passage has been used */
+function markAttempted(id){
+  if(!id) return;
+  const c=loadCache();
+  let hit=false;
+  for(const r of c) if(r && r.id===id && !r.attemptedAt){ r.attemptedAt=Date.now(); hit=true; break; }
+  if(hit) saveCache(c);
+}
+/* drop only passages that were attempted, and only once they have aged out */
+function sweepAttempted(){
+  const cut=Date.now()-KEEP_ATTEMPTED_DAYS*86400000;
+  const c=loadCache();
+  const keep=c.filter(r=>!(r && r.generated && r.attemptedAt && r.attemptedAt<cut));
+  const removed=c.length-keep.length;
+  if(removed){ saveCache(keep); rebuildList(); }
+  return removed;
+}
+function saveCache(arr){
+  /* Keep the NEWEST records. The old slice(0,800) kept the oldest and silently
+     threw away everything generated after the cache filled up. */
+  let a=arr.slice();
+  if(a.length>CACHE_MAX){
+    /* attempted passages are the first to go, newest-first within each group */
+    a.sort((x,y)=>{
+      const ax=(x&&x.attemptedAt)?1:0, ay=(y&&y.attemptedAt)?1:0;
+      if(ax!==ay) return ax-ay;
+      return (y&&y.created||0)-(x&&x.created||0);
+    });
+    a=a.slice(0,CACHE_MAX);
+  }
+  try{ store.set(CACHE_KEY, JSON.stringify(a)); }
+  catch(e){                                   /* storage full: shed the oldest half and retry */
+    a.sort((x,y)=>(y&&y.created||0)-(x&&x.created||0));
+    a=a.slice(0,Math.max(50,Math.floor(a.length/2)));
+    try{ store.set(CACHE_KEY, JSON.stringify(a)); }catch(e2){}
+  }
+}
 function makePassageRecords(meta, rawText){
   const chunks=buildPassages(rawText); const used=new Set();
   return chunks.map((text,i)=>{
@@ -590,10 +631,19 @@ async function loadArticles(force){                 // kept name: called by init
   await runDailyPipeline(!!force);                  // 2. at most one model request per day
 }
 function fillDateAndArticles(){
-  const dates=[...new Set(articles.map(a=>a.date?new Date(a.date).toDateString():"Undated"))];
+  const counts={};
+  articles.forEach(a=>{ const k=a.date?new Date(a.date).toDateString():"Undated"; counts[k]=(counts[k]||0)+1; });
+  const dates=Object.keys(counts).sort((x,y)=>{         // newest first, undated last
+    if(x==="Undated") return 1; if(y==="Undated") return -1;
+    return new Date(y)-new Date(x);
+  });
   const dsel=$("date"); dsel.innerHTML="";
   const anyO=document.createElement("option"); anyO.value="__any"; anyO.textContent="Any date"; dsel.appendChild(anyO);
-  dates.forEach(ds=>{ const o=document.createElement("option"); o.value=ds; o.textContent=(ds==="Undated"?"Offline / exam-style":new Date(ds).toLocaleDateString(undefined,{weekday:"short",day:"2-digit",month:"short"})); dsel.appendChild(o); });
+  dates.forEach(ds=>{ const o=document.createElement("option"); o.value=ds;
+    o.textContent=(ds==="Undated"?"Offline / exam-style"
+      :new Date(ds).toLocaleDateString(undefined,{weekday:"short",day:"2-digit",month:"short"}))
+      +" ("+counts[ds]+")";
+    dsel.appendChild(o); });
   $("date").disabled=false; $("article").disabled=false;
   populateArticles();
 }
@@ -619,6 +669,7 @@ function applyPassage(a){
   const wc=words(text).length;
   if(wc<MINW){ showNote("That passage is only "+wc+" words (need "+MINW+"+) \u2014 pick another."); return false; }
   current=buildCurrent(a.source,"\u2014 "+String(a.topic||a.headline).slice(0,70), text, a.difficulty||"Medium");
+  current.id=a.id||"";
   renderPassage(); resetHud(); return true;
 }
 
@@ -688,9 +739,13 @@ function showNote(txt){ const n=$("note"); n.textContent=txt; n.style.display="i
 const AI_SRC="Daily Current Affairs";
 const AI_DAY_KEY="jk_ai_day", AI_SIG_KEY="jk_ai_sig", AI_KEY_KEY="jk_ai_key",
       AI_COUNT_KEY="jk_ai_count", AI_VAR_KEY="jk_ai_variants", AI_LOG_KEY="jk_ai_log",
-      AI_PROV_KEY="jk_ai_provider", AI_MODEL_KEY="jk_ai_model";
-const AI_MIN=420, AI_MAX=480;              // hard word band required by the exam format
-const AI_TOL_LO=AI_MIN, AI_TOL_HI=560;     // accept a little long, never short
+      AI_PROV_KEY="jk_ai_provider", AI_MODEL_KEY="jk_ai_model", AI_HEADS_KEY="jk_ai_heads";
+const AI_MIN=420, AI_MAX=480;              // word band required by the exam format
+const AI_TARGET=500;                       // what we ask for: models undershoot stated counts
+const AI_TOL_LO=AI_MIN;                    // the only gate: the typing engine will not
+                                           // load a passage under AI_MIN words. There is
+                                           // deliberately no upper limit, since a long
+                                           // passage is simply more practice.
 let aiBusy=false, aiFeedStatus="", aiRoute="";
 
 /* ---- small UI helpers ---------------------------------------------------- */
@@ -699,6 +754,20 @@ function aiState(txt,tone){ const el=$("ai-state"); if(!el) return;
 function aiLog(html,keep){ const el=$("art-msg"); if(el) el.innerHTML=html; if(keep!==false) store.set(AI_LOG_KEY,html); }
 function aiCount(){ const v=parseInt(store.get(AI_COUNT_KEY)||"10",10); return Math.max(3,Math.min(10,isNaN(v)?10:v)); }
 function aiVariants(){ const v=parseInt(store.get(AI_VAR_KEY)||"2",10); return Math.max(1,Math.min(3,isNaN(v)?2:v)); }
+/* Today's headlines are kept so a retry after a model failure costs no feed
+   requests. Stored per day; yesterday's are replaced, not accumulated. */
+function saveHeadlines(day, signature, headlines){
+  if(!day || !Array.isArray(headlines) || !headlines.length) return;
+  try{ store.set(AI_HEADS_KEY, JSON.stringify({day, signature:signature||"", headlines:headlines.slice(0,10)})); }
+  catch(e){}
+}
+function loadHeadlines(day){
+  try{
+    const j=JSON.parse(store.get(AI_HEADS_KEY)||"null");
+    if(j && j.day===day && Array.isArray(j.headlines) && j.headlines.length>=3) return j;
+  }catch(e){}
+  return null;
+}
 function aiProvider(){ const p=(store.get(AI_PROV_KEY)||"openai").toLowerCase();
   return (p==="openai"||p==="gemini"||p==="anthropic")?p:"openai"; }
 function aiModel(){ return (store.get(AI_MODEL_KEY)||"").trim(); }
@@ -723,22 +792,48 @@ async function requestDailySet(dayKey, knownSig){
   let serverErr="";
   try{
     const r=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({day:dayKey, count:aiCount(), variants:aiVariants(), knownSignature:knownSig||""})});
+      body:JSON.stringify({day:dayKey, count:aiCount(), variants:aiVariants(),
+                           knownSignature:knownSig||"",
+                           headlines:(loadHeadlines(dayKey)||{}).headlines||undefined})});
     if(r.ok){
       const j=await r.json();
       aiRoute="server /api/generate"+(j.provider?" ("+j.provider+(j.model?" / "+j.model:"")+")":"");
       aiFeedStatus=j.feeds||"";
+      if(Array.isArray(j.headlines)&&j.headlines.length) saveHeadlines(dayKey, j.signature, j.headlines);
       if(j.unchanged) return {unchanged:true, signature:j.signature||knownSig};
       if(Array.isArray(j.passages)&&j.passages.length)
         return {unchanged:false, items:j.passages, headlines:j.headlines||[],
                 signature:j.signature||"", model:j.model||"",
                 expected:j.expected||0, truncated:!!j.truncated};
-      serverErr="server returned no passages";
+      serverErr="the server returned no passages";
     }else{
-      let d=""; try{ d=(await r.text()||"").replace(/\s+/g," ").slice(0,160); }catch(e){}
-      serverErr="server HTTP "+r.status+(d?" "+d:"");
+      let raw="", j=null;
+      try{ raw=(await r.text())||""; }catch(e){}
+      try{ j=JSON.parse(raw); }catch(e){}
+      const detail=(j&&(j.error||j.message))||raw.replace(/\s+/g," ").slice(0,200);
+      if(j&&j.feeds) aiFeedStatus=j.feeds;
+      /* 404 and 501 mean the endpoint is missing or has no key configured, so the
+         browser route is worth a try. Any other status means the server got as far
+         as the provider and the provider refused: repeating that call from the
+         browser would fail the same way and bury the real reason. */
+      if(r.status===404||r.status===501){
+        serverErr="server HTTP "+r.status+": "+detail+(j&&j.hint?" ("+j.hint+")":"");
+      }else{
+        const e=new Error(detail+(j&&j.hint?" \u2014 "+j.hint:""));
+        e.stage=(j&&j.stage)||"model"; e.http=r.status;
+        e.provider=(j&&j.provider)||""; e.model=(j&&j.model)||"";
+        /* the server got as far as picking headlines: keep them so the retry is free */
+        if(Array.isArray(j&&j.headlines)&&j.headlines.length){
+          saveHeadlines(dayKey, j.signature, j.headlines);
+          e.headlinesCached=j.headlines.length;
+        }
+        throw e;
+      }
     }
-  }catch(e){ serverErr="server unreachable"; }
+  }catch(e){
+    if(e&&e.stage) throw e;
+    if(!serverErr) serverErr="the server route could not be reached";
+  }
   return browserFallback(dayKey, serverErr);
 }
 
@@ -849,14 +944,18 @@ angles,
 "different words. Treat the headline as a starting point and write about the wider subject it belongs to.",
 "",
 "RULES FOR EVERY PASSAGE",
-"1. Length: between "+AI_MIN+" and "+AI_MAX+" words. Aim for 445 to 465 words. This is a hard requirement; count carefully.",
+"1. Length: aim for about "+AI_TARGET+" words. The finished passage must NEVER be shorter than "+AI_MIN+" words:",
+"   anything shorter is thrown away and the work is wasted. Running slightly long is fine, running short is not.",
+"   Do not wind up early. If you are near the end and short of length, add another substantive paragraph.",
 "2. Write a completely new, self-contained article. Explain the background, the institutions involved, why the subject matters and what it means for ordinary citizens. Do not merely restate the headline and do not summarise any news report.",
 "3. Tone: neutral, factual, impersonal newspaper prose in clear Indian English. No opinions, no advocacy, no predictions, no rhetorical questions, no direct address to the reader.",
 "4. No quotations of any kind. Never attribute a statement to a named person or body. Do not invent figures, dates, rupee amounts, percentages or case names. Prefer established general background over specific numbers you cannot verify.",
 "5. Plain continuous prose only. No markdown, no headings, no bullet points, no numbered lists, no bold or italic marks, no emoji, no URLs, no parenthetical citations.",
 "6. Plain ASCII characters only: straight quotes and apostrophes, ordinary hyphens, no em dashes, no curly quotes, no rupee symbol (write Rs. instead).",
 "7. Typing-test readability: complete sentences of ordinary length, ordinary punctuation, no long strings of capitals, no more than a light sprinkling of abbreviations, and no tables or figures.",
-"8. Write it as three to five paragraphs of flowing text, but join them into a single continuous string separated by ordinary spaces.",
+"8. Write FIVE paragraphs of roughly 100 words each, which is about six to seven sentences per paragraph.",
+"   Join them into a single continuous string separated by ordinary spaces. Counting paragraphs and sentences",
+"   is more reliable than counting words, so use that as your guide to reaching the length.",
 "", "TITLE",
 "Every passage gets its own descriptive title of four to nine words saying what that passage is actually about.",
 "Titles must not repeat the headline, must not be generic labels such as Passage, Article, Part 1 or Current Affairs,",
@@ -1101,7 +1200,7 @@ function makeAiRecords(items, headlines, dayKey){
     if(!meta) meta=headlines[i] || {headline:srcHead||"Current affairs", site:"News"};
     const text=sanitizeGenerated(it&&(it.passage||it.text||it.body));
     const wc=words(text).length;
-    if(wc<AI_TOL_LO || wc>AI_TOL_HI){ rejected.push((meta.headline||"item "+(i+1)).slice(0,40)+" ("+wc+"w)"); return; }
+    if(wc<AI_TOL_LO){ rejected.push((meta.headline||"item "+(i+1)).slice(0,40)+" ("+wc+"w)"); return; }
     const v=validateDifficulty(text, it&&it.difficulty);
     if(v.adjusted) adjusted++;
     const angle=/^(core|context|impact)$/.test(String(it&&it.angle))?it.angle:"";
@@ -1109,7 +1208,7 @@ function makeAiRecords(items, headlines, dayKey){
     const hk=headlineKey(meta.headline);
     perHeadline[hk]=(perHeadline[hk]||0)+1;
     out.push({
-      id: hashId(dayKey+"::"+hk+"::"+(angle||perHeadline[hk])+"::"+title),
+      id: hashId(dayKey+"::"+hk+"::"+(angle||"a")+"#"+perHeadline[hk]+"::"+title),
       topic: title,
       headline: meta.headline,
       source: AI_SRC,
@@ -1167,9 +1266,20 @@ async function runDailyPipeline(force){
     const {records, rejected, adjusted, perHeadline}=makeAiRecords(res.items, res.headlines||[], dayKey);
 
     if(!records.length){
-      aiState("Nothing usable came back","bad");
-      aiLog("The request returned "+res.items.length+" items but none met the "+AI_MIN+"-"+AI_MAX+
-            " word rule. Nothing was cached \u2014 press Daily set to try again.");
+      const wc=res.items.map(it=>sanitizeGenerated(it&&(it.passage||it.text||it.body))
+                 .split(/\s+/).filter(Boolean).length).sort((a,b)=>a-b);
+      const lo=wc[0]||0, hi=wc[wc.length-1]||0;
+      aiState("Passages came back too short","bad");
+      aiLog("<b>"+res.items.length+" passages were written, but every one came in under "+AI_MIN+
+        " words.</b> They ran "+lo+" to "+hi+" words."+
+        "<br>This is about the length of the generated passages, not the headlines. The typing engine "+
+        "will not load anything under "+AI_MIN+" words, so nothing was cached. There is no upper limit \u2014 "+
+        "long passages are kept as they are."+
+        "<br>Models routinely undershoot a stated word count. The prompt already asks for about "+
+        AI_TARGET+" words to compensate; if this keeps happening, a stronger model usually fixes it "+
+        "(Flash rather than Flash-Lite, for instance)."+
+        (loadHeadlines(istDayKey())?"<br>Today's headlines are saved, so retrying costs no feed requests.":"")+
+        "<br>Press Daily set to try again.");
       return;
     }
 
@@ -1191,13 +1301,32 @@ async function runDailyPipeline(force){
       (expected?" Asked for "+expected+".":"")+
       "<br>Lengths "+Math.min.apply(null,wcs)+"\u2013"+Math.max.apply(null,wcs)+" words \u00b7 "+
       "difficulty re-checked locally"+(adjusted?", "+adjusted+" rating(s) corrected":", all ratings agreed")+
-      (rejected.length?' \u00b7 <span style="color:#ff8f6b">'+rejected.length+" outside the word band, dropped</span>":"")+
+      (rejected.length?' \u00b7 <span style="color:#ff8f6b">'+rejected.length+" under "+AI_MIN+" words, dropped</span>":"")+
       (res.truncated?' <span style="color:#ff8f6b">\u00b7 reply hit the token limit; whole passages were salvaged</span>':"")+
       (short&&!res.truncated?' <span style="color:#ffd9b0">\u00b7 fewer than asked for</span>':"")+
       (aiFeedStatus?"<br>Headline feeds: "+esc(aiFeedStatus):"")+
       "<br>Cached locally \u2014 not regenerated until the headlines change.");
   }catch(e){
-    if(e && e.code==="NO_ROUTE"){
+    if(e && e.stage==="feeds"){
+      aiState("Headline feeds unreachable","bad");
+      aiLog("<b>The headline feeds could not be reached.</b> This step is a plain fetch of PIB, PRS "+
+            "and RBI titles and has nothing to do with the AI provider, so a key or billing problem is "+
+            "not the cause here."+(aiFeedStatus?"<br>Feeds tried: "+esc(aiFeedStatus):"")+
+            "<br>Nothing was cached. Usually a transient outage \u2014 press Daily set to retry.");
+    }else if(e && e.stage==="budget"){
+      aiState("Daily budget reached","bad");
+      aiLog("This deployment has already run its allowed generations for today "+
+            "(DAILY_REQUEST_BUDGET). Nothing was cached. Raise the limit or wait until tomorrow.");
+    }else if(e && e.stage){
+      aiState("Provider refused the request","bad");
+      aiLog("<b>Headlines were fetched normally.</b> The failure was at the model step: "+
+            (e.provider?esc(e.provider):"the provider")+(e.model?" / "+esc(e.model):"")+
+            " returned HTTP "+e.http+".<br><span style=\"color:#ff8f6b\">"+esc(String(e.message||""))+"</span>"+
+            (aiFeedStatus?"<br>Headline feeds: "+esc(aiFeedStatus):"")+
+            (e.headlinesCached?"<br>Today's "+e.headlinesCached+" headlines have been saved, so retrying "+
+              "will not touch the feeds again.":"")+
+            "<br>No passages were cached. Fix the key, model id or billing, then press Daily set.");
+    }else if(e && e.code==="NO_ROUTE"){
       aiState("No generator configured","bad");
       aiLog("No way to reach the model yet. Either deploy <b>api/generate.js</b> with OPENAI_API_KEY, "+
             "GEMINI_API_KEY or ANTHROPIC_API_KEY set in the server environment (recommended), or open "+
@@ -1451,6 +1580,7 @@ async function showResults(s){
   $("rev-orig").innerHTML=cmp.origHtml; $("rev-typed").innerHTML=cmp.typedHtml;
   $("review").style.display="none"; $("btn-review").textContent="Review mistakes ▾";
   if(s.net>bestNet){ bestNet=s.net; $("best-val").textContent=Math.round(bestNet)+" wpm"; store.set("jk_best",Math.round(bestNet)); }
+  markAttempted(current.id);
   recordAttempt(s, V);
   $("overlay").classList.add("show");
 }
@@ -1667,7 +1797,9 @@ passageEl.addEventListener("click",()=>{ if(started) input.focus(); });
   $("ai-model").placeholder=MODEL_HINT[aiProvider()]||"model id";
   if((store.get(AI_KEY_KEY)||"").trim())
     $("ai-key").placeholder="key saved in this browser \u2014 type a new one to replace it";
+  const swept=sweepAttempted();
   const savedLog=store.get(AI_LOG_KEY); if(savedLog) $("art-msg").innerHTML=savedLog;
+  if(swept) showNote(swept+" already-typed passage"+(swept>1?"s":"")+" cleared \u2014 your results are still in History.");
   const today=istDayKey(), gen=loadCache().filter(r=>r&&r.generated);
   aiState(gen.some(r=>r.day===today) ? ("Today's set is ready \u00b7 "+today)
         : gen.length ? (gen.length+" generated passages cached \u00b7 none for today")
