@@ -6,9 +6,13 @@
 const ALLOW_HOSTS = [
   "pib.gov.in",
   "www.pib.gov.in",
-  "theconversation.com",
-  "india.mongabay.com",
-  "news.mongabay.com",
+  "rbi.org.in",
+  "www.rbi.org.in",
+  "prsindia.org",
+  "www.prsindia.org",
+  "news.un.org",
+  "blogs.worldbank.org",
+  "www.worldbank.org",
 ];
 
 const MAX_BYTES = 2_000_000;   // 2 MB cap on relayed content
