@@ -62,7 +62,6 @@ function providerKey(name) {
 /* ------------------------------------------------------------------ feeds -- */
 const FEEDS = [
   { site: "PIB", weight: 3, url: "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3" },
-  { site: "PIB", weight: 3, url: "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3&reg=3" },
   { site: "PRS India", weight: 3, url: "https://prsindia.org/theprsblog/feed" },
   { site: "RBI", weight: 2, url: "https://www.rbi.org.in/pressreleases_rss.xml" }
 ];
@@ -459,6 +458,34 @@ async function callModel(provider, key, model, prompt, signal) {
   return callAnthropic(key, model, prompt, signal);
 }
 
+// Transient server-side failures: the model is up, it is just busy right now.
+// 429 is deliberately NOT here. At one request per day a per-minute rate limit is
+// unreachable, so a 429 means the daily quota is gone and retrying only burns time.
+const RETRY_STATUS = new Set([500, 502, 503, 504, 529]);
+const RETRY_WAITS = [4000, 12000, 25000];
+
+async function callModelWithRetry(provider, key, model, prompt, signal) {
+  let attempts = 0, last = null;
+  for (let i = 0; i <= RETRY_WAITS.length; i++) {
+    try {
+      attempts++;
+      const out = await callModel(provider, key, model, prompt, signal);
+      out.attempts = attempts;
+      return out;
+    } catch (e) {
+      last = e;
+      if (e && e.name === "AbortError") throw e;
+      if (i < RETRY_WAITS.length && RETRY_STATUS.has(e && e.http)) {
+        await new Promise((r) => setTimeout(r, RETRY_WAITS[i]));
+        continue;
+      }
+      if (last) last.attempts = attempts;
+      throw last;
+    }
+  }
+  throw last;
+}
+
 /* Ask the provider what model ids it currently offers. */
 async function listModels(provider, key) {
   if (provider === "openai") {
@@ -578,7 +605,7 @@ export default async function handler(req, res) {
   const timer = setTimeout(() => controller.abort(), 280000);
   try {
     const prompt = buildPrompt(picked.map((h) => h.headline), day, variants);
-    const out = await callModel(provider, key, model, prompt, controller.signal);
+    const out = await callModelWithRetry(provider, key, model, prompt, controller.signal);
     clearTimeout(timer);
 
     const items = extractItems(out.text);
@@ -625,10 +652,15 @@ export default async function handler(req, res) {
     const aborted = e && e.name === "AbortError";
     const msg = String((e && e.message) || e);
     // A wrong or retired model id is the most common failure, so say so plainly.
-    const badModel = /404|model|not.?found|does not exist|unsupported/i.test(msg);
+    const http = (e && e.http) || 0;
+    const badModel = /\b404\b|not\s*found|does not exist|unsupported\s+model|invalid\s+model|no\s+such\s+model|is not supported/i.test(msg);
+    const retryable = RETRY_STATUS.has(http) || /high demand|overload|unavailable|try again later|temporarily/i.test(msg);
     return res.status(aborted ? 504 : 502).json({
       error: aborted ? "model request timed out" : msg.slice(0, 400),
       stage: "model", provider, model, feeds: status, signature, headlines: headlineOut,
+      providerStatus: http || undefined,
+      attempts: (e && e.attempts) || 1,
+      retryable: retryable || undefined,
       hint: badModel ? "check the model id with GET /api/generate?models=1 and set AI_MODEL" : undefined
     });
   }

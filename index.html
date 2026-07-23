@@ -822,6 +822,8 @@ async function requestDailySet(dayKey, knownSig){
         const e=new Error(detail+(j&&j.hint?" \u2014 "+j.hint:""));
         e.stage=(j&&j.stage)||"model"; e.http=r.status;
         e.provider=(j&&j.provider)||""; e.model=(j&&j.model)||"";
+        e.retryable=!!(j&&j.retryable); e.attempts=(j&&j.attempts)||1;
+        e.providerStatus=(j&&j.providerStatus)||0;
         /* the server got as far as picking headlines: keep them so the retry is free */
         if(Array.isArray(j&&j.headlines)&&j.headlines.length){
           saveHeadlines(dayKey, j.signature, j.headlines);
@@ -1317,11 +1319,23 @@ async function runDailyPipeline(force){
       aiState("Daily budget reached","bad");
       aiLog("This deployment has already run its allowed generations for today "+
             "(DAILY_REQUEST_BUDGET). Nothing was cached. Raise the limit or wait until tomorrow.");
+    }else if(e && e.stage && e.retryable){
+      aiState("Model busy \u00b7 try again shortly","bad");
+      aiLog("<b>Nothing is misconfigured.</b> "+(e.provider?esc(e.provider):"The provider")+
+            (e.model?" / "+esc(e.model):"")+" is temporarily overloaded"+
+            (e.providerStatus?" (HTTP "+e.providerStatus+")":"")+" and turned the request away."+
+            (e.attempts>1?" It was retried "+e.attempts+" times with a growing pause between each.":"")+
+            "<br><span style=\"color:#8ba0af\">"+esc(String(e.message||""))+"</span>"+
+            (e.headlinesCached?"<br>Today's "+e.headlinesCached+" headlines are saved, so pressing Daily set "+
+              "again costs no feed requests and no quota.":"")+
+            "<br>Wait a few minutes and press <b>Daily set</b>. If it persists all day, try a different "+
+            "model id \u2014 the busiest models are the ones everyone defaults to.");
     }else if(e && e.stage){
       aiState("Provider refused the request","bad");
       aiLog("<b>Headlines were fetched normally.</b> The failure was at the model step: "+
             (e.provider?esc(e.provider):"the provider")+(e.model?" / "+esc(e.model):"")+
-            " returned HTTP "+e.http+".<br><span style=\"color:#ff8f6b\">"+esc(String(e.message||""))+"</span>"+
+            " returned HTTP "+(e.providerStatus||e.http)+".<br><span style=\"color:#ff8f6b\">"+
+            esc(String(e.message||""))+"</span>"+
             (aiFeedStatus?"<br>Headline feeds: "+esc(aiFeedStatus):"")+
             (e.headlinesCached?"<br>Today's "+e.headlinesCached+" headlines have been saved, so retrying "+
               "will not touch the feeds again.":"")+
