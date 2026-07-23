@@ -462,7 +462,11 @@ async function callModel(provider, key, model, prompt, signal) {
 // 429 is deliberately NOT here. At one request per day a per-minute rate limit is
 // unreachable, so a 429 means the daily quota is gone and retrying only burns time.
 const RETRY_STATUS = new Set([500, 502, 503, 504, 529]);
-const RETRY_WAITS = [4000, 12000, 25000];
+// EVERY attempt counts against a per-day request quota, even one the provider
+// turns away. On a free tier that is the scarce resource, so retry once and no
+// more. Raise AI_RETRIES only if your plan is metered by tokens, not requests.
+const RETRIES = Math.max(0, Math.min(3, Number(process.env.AI_RETRIES ?? 1)));
+const RETRY_WAITS = [6000, 15000, 30000].slice(0, RETRIES);
 
 async function callModelWithRetry(provider, key, model, prompt, signal) {
   let attempts = 0, last = null;
@@ -529,6 +533,7 @@ export default async function handler(req, res) {
 
   const { name: provider, key } = pickProvider();
   const model = process.env.AI_MODEL || DEFAULT_MODEL[provider] || "";
+  const modelSource = process.env.AI_MODEL ? "AI_MODEL" : "built-in default";
 
   if (!provider || !key) {
     return res.status(501).json({
@@ -543,7 +548,7 @@ export default async function handler(req, res) {
                         (String(req.url || "").indexOf("models=") >= 0 ? "1" : "");
     if (!wantsModels) return res.status(405).json({ error: "use POST, or GET ?models=1" });
     const out = await listModels(provider, key);
-    return res.status(out.error ? 502 : 200).json({ provider, configuredModel: model, ...out });
+    return res.status(out.error ? 502 : 200).json({ provider, configuredModel: model, modelSource, ...out });
   }
 
   if (req.method !== "POST") return res.status(405).json({ error: "method not allowed" });
@@ -593,7 +598,7 @@ export default async function handler(req, res) {
   const headlineOut = picked.map((h) => ({ headline: h.headline, site: h.site, date: h.date }));
 
   if (knownSignature && knownSignature === signature) {
-    return res.status(200).json({ day, signature, unchanged: true, feeds: status, provider, model,
+    return res.status(200).json({ day, signature, unchanged: true, feeds: status, provider, model, modelSource,
                                  headlines: headlineOut, count: 0, passages: [] });
   }
 
@@ -612,7 +617,7 @@ export default async function handler(req, res) {
     if (!items) {
       return res.status(502).json({
         error: "model did not return usable JSON",
-        stage: "model", provider, model, feeds: status, signature, headlines: headlineOut,
+        stage: "model", provider, model, modelSource, feeds: status, signature, headlines: headlineOut,
         sample: String(out.text || "").replace(/\s+/g, " ").slice(0, 200)
       });
     }
@@ -633,14 +638,14 @@ export default async function handler(req, res) {
       const counts = items.map((it) => String((it && (it.passage || it.text || it.body)) || "")
         .split(/\s+/).filter(Boolean).length).sort((a, b) => a - b);
       return res.status(502).json({
-        error: "no usable passages in model output", stage: "model", provider, model, feeds: status,
+        error: "no usable passages in model output", stage: "model", provider, model, modelSource, feeds: status,
         signature, headlines: headlineOut, returned: items.length, wordCounts: counts
       });
     }
 
     return res.status(200).json({
       day, signature, unchanged: false,
-      provider, model, feeds: status, variants,
+      provider, model, modelSource, feeds: status, variants,
       expected: picked.length * variants,
       truncated: !!out.truncated,
       headlines: headlineOut,
@@ -657,7 +662,7 @@ export default async function handler(req, res) {
     const retryable = RETRY_STATUS.has(http) || /high demand|overload|unavailable|try again later|temporarily/i.test(msg);
     return res.status(aborted ? 504 : 502).json({
       error: aborted ? "model request timed out" : msg.slice(0, 400),
-      stage: "model", provider, model, feeds: status, signature, headlines: headlineOut,
+      stage: "model", provider, model, modelSource, feeds: status, signature, headlines: headlineOut,
       providerStatus: http || undefined,
       attempts: (e && e.attempts) || 1,
       retryable: retryable || undefined,

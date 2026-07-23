@@ -271,6 +271,8 @@
   <div class="ai-panel" id="ai-panel">
     <div class="ai-row">
       <span class="ai-tag" id="ai-state">Daily set: not generated yet</span>
+      <span class="ai-tag" id="ai-engine" style="display:none"></span>
+      <span class="ai-tag" id="ai-attempts" style="display:none"></span>
       <span class="ai-field"><label for="ai-count">Headlines / day</label><input type="number" id="ai-count" min="3" max="10" value="10"></span>
       <span class="ai-field"><label for="ai-variants" title="Each headline is written up from a different angle: the development itself, its background, and the adjacent issues.">Passages each</label><input type="number" id="ai-variants" min="1" max="3" value="2"></span>
       <span class="spacer"></span>
@@ -283,7 +285,7 @@
         <option value="gemini">Gemini</option>
         <option value="anthropic">Anthropic</option>
       </select>
-      <input type="text" id="ai-model" placeholder="model id, e.g. gpt-5.6-terra" autocomplete="off" spellcheck="false" style="max-width:200px">
+      <input type="text" id="ai-model" placeholder="fallback model id (not used when api/generate.js is deployed)" autocomplete="off" spellcheck="false" style="max-width:200px">
       <input type="password" id="ai-key" placeholder="API key for the provider above" autocomplete="off" spellcheck="false">
       <button class="btn-tiny" id="ai-key-save">Save</button>
       <button class="btn-tiny" id="ai-key-clear">Remove</button>
@@ -739,7 +741,13 @@ function showNote(txt){ const n=$("note"); n.textContent=txt; n.style.display="i
 const AI_SRC="Daily Current Affairs";
 const AI_DAY_KEY="jk_ai_day", AI_SIG_KEY="jk_ai_sig", AI_KEY_KEY="jk_ai_key",
       AI_COUNT_KEY="jk_ai_count", AI_VAR_KEY="jk_ai_variants", AI_LOG_KEY="jk_ai_log",
-      AI_PROV_KEY="jk_ai_provider", AI_MODEL_KEY="jk_ai_model", AI_HEADS_KEY="jk_ai_heads";
+      AI_PROV_KEY="jk_ai_provider", AI_MODEL_KEY="jk_ai_model", AI_HEADS_KEY="jk_ai_heads",
+      AI_TRIES_KEY="jk_ai_tries", AI_ENGINE_KEY="jk_ai_engine";
+/* Every attempt costs a request against the provider's daily quota, whether or
+   not it returns passages. Count them, show them, and refuse to fire them off
+   back to back. */
+const COOLDOWN_MS=90000;
+let lastAttemptAt=0;
 const AI_MIN=420, AI_MAX=480;              // word band required by the exam format
 const AI_TARGET=500;                       // what we ask for: models undershoot stated counts
 const AI_TOL_LO=AI_MIN;                    // the only gate: the typing engine will not
@@ -767,6 +775,38 @@ function loadHeadlines(day){
     if(j && j.day===day && Array.isArray(j.headlines) && j.headlines.length>=3) return j;
   }catch(e){}
   return null;
+}
+function bumpTries(day){
+  let t={day:"",n:0};
+  try{ t=JSON.parse(store.get(AI_TRIES_KEY)||"null")||t; }catch(e){}
+  if(t.day!==day) t={day:day,n:0};
+  t.n++; store.set(AI_TRIES_KEY,JSON.stringify(t)); return t.n;
+}
+function triesToday(day){
+  try{ const t=JSON.parse(store.get(AI_TRIES_KEY)||"null"); return (t&&t.day===day)?t.n:0; }catch(e){ return 0; }
+}
+function renderTries(day){
+  const el=$("ai-attempts"); if(!el) return;
+  const n=triesToday(day);
+  if(!n){ el.style.display="none"; return; }
+  el.style.display="";
+  el.textContent=n+" request"+(n>1?"s":"")+" sent today";
+  el.className="ai-tag"+(n>=3?" bad":"");
+}
+function renderEngine(j){
+  const el=$("ai-engine"); if(!el) return;
+  if(j && j.provider){
+    store.set(AI_ENGINE_KEY, JSON.stringify({provider:j.provider, model:j.model||"", src:j.modelSource||""}));
+  }
+  let e=null; try{ e=JSON.parse(store.get(AI_ENGINE_KEY)||"null"); }catch(err){}
+  if(!e||!e.provider){ el.style.display="none"; return; }
+  el.style.display="";
+  const guessed=e.src==="built-in default";
+  el.textContent=e.provider+(e.model?" / "+e.model:"")+(guessed?"  (AI_MODEL not set)":"");
+  el.className="ai-tag"+(guessed?" bad":"");
+  el.title=guessed
+    ? "The server is using a model id hardcoded in api/generate.js, not one you chose. Set AI_MODEL in the deployment environment and redeploy."
+    : "Model id comes from the AI_MODEL environment variable on the server.";
 }
 function aiProvider(){ const p=(store.get(AI_PROV_KEY)||"openai").toLowerCase();
   return (p==="openai"||p==="gemini"||p==="anthropic")?p:"openai"; }
@@ -799,6 +839,7 @@ async function requestDailySet(dayKey, knownSig){
       const j=await r.json();
       aiRoute="server /api/generate"+(j.provider?" ("+j.provider+(j.model?" / "+j.model:"")+")":"");
       aiFeedStatus=j.feeds||"";
+      renderEngine(j);
       if(Array.isArray(j.headlines)&&j.headlines.length) saveHeadlines(dayKey, j.signature, j.headlines);
       if(j.unchanged) return {unchanged:true, signature:j.signature||knownSig};
       if(Array.isArray(j.passages)&&j.passages.length)
@@ -822,6 +863,7 @@ async function requestDailySet(dayKey, knownSig){
         const e=new Error(detail+(j&&j.hint?" \u2014 "+j.hint:""));
         e.stage=(j&&j.stage)||"model"; e.http=r.status;
         e.provider=(j&&j.provider)||""; e.model=(j&&j.model)||"";
+        renderEngine(j);
         e.retryable=!!(j&&j.retryable); e.attempts=(j&&j.attempts)||1;
         e.providerStatus=(j&&j.providerStatus)||0;
         /* the server got as far as picking headlines: keep them so the retry is free */
@@ -1142,7 +1184,7 @@ function condenseHeadline(headline){
   while(t.toLowerCase()===hl && t.split(" ").length>3) t=t.split(" ").slice(0,-1).join(" ");
   return t;
 }
-const MODEL_HINT={openai:"model id, e.g. gpt-5.6-terra", gemini:"model id, e.g. gemini-3.5-flash", anthropic:"model id, e.g. claude-sonnet-5"};
+const MODEL_HINT={openai:"fallback model id, e.g. gpt-5.6-terra", gemini:"fallback model id, e.g. gemini-2.5-flash", anthropic:"fallback model id, e.g. claude-sonnet-5"};
 const ANGLE_TAIL={core:" and how it works", context:" in wider context", impact:" and its practical effects"};
 function sanitizeTitle(raw, headline, text, used, angle){
   const hl=String(headline||"").toLowerCase().trim();
@@ -1242,14 +1284,42 @@ async function runDailyPipeline(force){
   const haveToday=loadCache().some(r=>r&&r.generated&&r.day===dayKey);
 
   if(!force && lastDay===dayKey && haveToday){
-    aiState("Today's set is ready \u00b7 "+dayKey,"ok");
-    aiLog(store.get(AI_LOG_KEY)||("Daily set already generated for "+dayKey+" \u2014 served from cache, no request made."),false);
+    const n=loadCache().filter(r=>r&&r.generated&&r.day===dayKey).length;
+    aiState("Loaded from storage \u00b7 "+n+" passages","ok");
+    aiLog(store.get(AI_LOG_KEY)||
+      ("<b>Loaded "+n+" stored passages for "+dayKey+".</b> No headlines were fetched and no passages "+
+       "were generated \u2014 nothing left this device."),false);
     return;
   }
 
+  const since=Date.now()-lastAttemptAt;
+  if(lastAttemptAt && since<COOLDOWN_MS){
+    const wait=Math.ceil((COOLDOWN_MS-since)/1000);
+    aiState("Wait "+wait+"s before retrying","bad");
+    aiLog("<b>Held back to protect your quota.</b> The last request went out "+Math.round(since/1000)+
+          "s ago and every request counts against the provider's daily allowance, even one that fails. "+
+          "Try again in "+wait+" seconds.");
+    return;
+  }
+  lastAttemptAt=Date.now();
+  const nTry=bumpTries(dayKey); renderTries(dayKey);
   aiBusy=true; setLoading(true);
-  aiState("Fetching headlines\u2026");
-  aiLog("Asking for today's headline set\u2026");
+  /* The request is for passages either way. Headlines are only fetched when we
+     do not already hold today's; say which of the two is happening. */
+  const cachedHeads=loadHeadlines(dayKey);
+  if(cachedHeads && cachedHeads.headlines.length){
+    aiState("Generating passages\u2026");
+    aiLog("<b>Step 1 headlines \u2014 skipped.</b> Today's "+cachedHeads.headlines.length+
+          " headlines are already stored, so no feed will be contacted.<br>"+
+          "<b>Step 2 passages \u2014 generating now\u2026</b> up to "+(aiCount()*aiVariants())+
+          " passages in one model request.");
+  }else{
+    aiState("Fetching headlines\u2026");
+    aiLog("<b>Step 1 headlines \u2014 fetching now\u2026</b> Nothing is stored for today, so PIB, PRS and "+
+          "RBI will be read (titles only).<br>"+
+          "<b>Step 2 passages \u2014 generated straight after</b>, in the same request: up to "+
+          (aiCount()*aiVariants())+" passages.");
+  }
   try{
     const res=await requestDailySet(dayKey, force?"":lastSig);
 
@@ -1258,13 +1328,15 @@ async function runDailyPipeline(force){
       store.set(AI_DAY_KEY,dayKey);
       if(res.signature) store.set(AI_SIG_KEY,res.signature);
       const n=loadCache().filter(r=>r&&r.generated).length;
-      aiState("Headlines unchanged \u00b7 cached","ok");
-      aiLog("Today's headlines match the set already generated, so no model request was made. "+
-            n+" generated passages are cached.");
+      aiState("No new headlines \u00b7 nothing generated","ok");
+      aiLog("<b>Step 1 headlines \u2014 fetched.</b> They match the set already used, so <b>step 2 was "+
+            "skipped entirely</b>: no passages were generated and no quota was spent.<br>"+
+            n+" previously generated passages are in storage and ready to practise.");
       return;
     }
 
     aiState("Checking "+res.items.length+" passages\u2026");
+    aiLog("<b>Step 3 checking \u2014 "+res.items.length+" passages came back.</b> Verifying length, stripping formatting and re-scoring difficulty\u2026");
     const {records, rejected, adjusted, perHeadline}=makeAiRecords(res.items, res.headlines||[], dayKey);
 
     if(!records.length){
@@ -1297,7 +1369,7 @@ async function runDailyPipeline(force){
     const seeds=Object.keys(perHeadline).length;
     const expected=res.expected||0;
     const short=expected && records.length<expected;
-    aiState(records.length+" fresh passages \u00b7 "+dayKey,"ok");
+    aiState("Generated "+records.length+" passages \u00b7 "+dayKey,"ok");
     aiLog("<b>"+records.length+" passages generated for "+dayKey+"</b> from "+seeds+" headlines, "+
       "in one request via "+esc(aiRoute)+"."+
       (expected?" Asked for "+expected+".":"")+
@@ -1328,8 +1400,10 @@ async function runDailyPipeline(force){
             "<br><span style=\"color:#8ba0af\">"+esc(String(e.message||""))+"</span>"+
             (e.headlinesCached?"<br>Today's "+e.headlinesCached+" headlines are saved, so pressing Daily set "+
               "again costs no feed requests and no quota.":"")+
-            "<br>Wait a few minutes and press <b>Daily set</b>. If it persists all day, try a different "+
-            "model id \u2014 the busiest models are the ones everyone defaults to.");
+            "<br><b>Every attempt still costs a request against your daily allowance</b>, even when it is "+
+            "refused, so this has now used "+triesToday(istDayKey())+" today. Wait several minutes before "+
+            "pressing <b>Daily set</b> again rather than retrying quickly. If it persists all day, a less "+
+            "popular model id is usually the fix.");
     }else if(e && e.stage){
       aiState("Provider refused the request","bad");
       aiLog("<b>Headlines were fetched normally.</b> The failure was at the model step: "+
@@ -1734,7 +1808,7 @@ $("btn-clearcache").onclick=()=>{ if(started||aiBusy) return;
 $("ai-forget").onclick=()=>{ if(started||aiBusy) return;
   if(!confirm("Delete the generated daily passages from this device? Your own passages and history are kept.")) return;
   clearDailyCache();
-  aiState("Daily set cleared");
+  aiState("Storage cleared \u00b7 nothing generated yet");
   $("art-msg").textContent="Generated passages removed. Press Daily set when you want a new one."; };
 $("ai-count").addEventListener("change",()=>{
   const v=Math.max(3,Math.min(10,parseInt($("ai-count").value,10)||10));
@@ -1811,13 +1885,15 @@ passageEl.addEventListener("click",()=>{ if(started) input.focus(); });
   $("ai-model").placeholder=MODEL_HINT[aiProvider()]||"model id";
   if((store.get(AI_KEY_KEY)||"").trim())
     $("ai-key").placeholder="key saved in this browser \u2014 type a new one to replace it";
+  renderEngine(null); renderTries(istDayKey());
   const swept=sweepAttempted();
   const savedLog=store.get(AI_LOG_KEY); if(savedLog) $("art-msg").innerHTML=savedLog;
   if(swept) showNote(swept+" already-typed passage"+(swept>1?"s":"")+" cleared \u2014 your results are still in History.");
   const today=istDayKey(), gen=loadCache().filter(r=>r&&r.generated);
-  aiState(gen.some(r=>r.day===today) ? ("Today's set is ready \u00b7 "+today)
-        : gen.length ? (gen.length+" generated passages cached \u00b7 none for today")
-        : "Daily set: not generated yet", gen.some(r=>r.day===today)?"ok":"");
+  const todayN=gen.filter(r=>r.day===today).length;
+  aiState(todayN ? ("Loaded from storage \u00b7 "+todayN+" passages for today")
+        : gen.length ? (gen.length+" stored passages \u00b7 none for today yet")
+        : "Nothing generated yet", todayN?"ok":"");
 
   loadArticles(false);   // cached passages first, then today's set if it is missing
   const b=store.get("jk_best"); if(b){ bestNet=parseFloat(b); $("best-val").textContent=Math.round(bestNet)+" wpm"; }
