@@ -409,19 +409,19 @@ let current={name:"",src:"",text:"",diff:"Medium",autoTop:60,top:60};
 
 /* ===== weighted, source-agnostic definitions ===== */
 const SOURCE_DEFS={
-  pib:{site:"PIB", feeds:["https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3&reg=3","https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3","https://www.pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3"],
+  pib:{site:"PIB", gdelt:"pib.gov.in", feeds:["https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3&reg=3","https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3","https://www.pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3"],
        sel:["#ContentPlaceHolder1_divContent",".release-content","#PdfDiv"]},
-  rbi:{site:"RBI", feeds:["https://www.rbi.org.in/pressreleases_rss.xml","https://www.rbi.org.in/notifications_rss.xml","https://www.rbi.org.in/speeches_rss.xml"],
+  rbi:{site:"RBI", gdelt:"rbi.org.in", feeds:["https://www.rbi.org.in/pressreleases_rss.xml","https://www.rbi.org.in/notifications_rss.xml","https://www.rbi.org.in/speeches_rss.xml"],
        sel:["#pressrelease",".content",".tablebg"]},
-  prs:{site:"PRS India", feeds:[
+  prs:{site:"PRS India", gdelt:"prsindia.org", feeds:[
     "https://prsindia.org/theprsblog/feed",
     "https://prsindia.org/rss.xml",
     "https://prsindia.org/feed"
   ],
        sel:[".field--name-body",".node__content",".content"]},
-  un:{site:"UN News", feeds:["https://news.un.org/feed/subscribe/en/news/all/rss.xml","https://news.un.org/feed/subscribe/en/news/topic/economic-development/rss.xml"],
+  un:{site:"UN News", gdelt:"news.un.org", feeds:["https://news.un.org/feed/subscribe/en/news/all/rss.xml","https://news.un.org/feed/subscribe/en/news/topic/economic-development/rss.xml"],
       sel:[".field--name-body",".story-content",".content"]},
-  worldbank:{site:"World Bank", feeds:[
+  worldbank:{site:"World Bank", gdelt:"worldbank.org", feeds:[
     "https://blogs.worldbank.org/feed/endpovertyinsouthasia/rss.xml",
     "https://blogs.worldbank.org/feed/developmenttalk/rss.xml",
     "https://blogs.worldbank.org/feed/impactevaluations/rss.xml",
@@ -435,7 +435,7 @@ const SOURCES=[
 ].map(base=>{
   const def=SOURCE_DEFS[base.id];
   return Object.assign({}, base, def, {
-    async list(date){ return listFromFeeds(this, date); },
+    async list(date){ const r=await listFromFeeds(this, date); return r.length? r : listFromGdelt(this); },
     async fetch(url){ return fetchArticleText(this, url); }
   });
 });
@@ -447,10 +447,41 @@ function isLatin(t){ if(!t) return false; if(DEVANAGARI.test(t)) return false;
 
 /* ===== generic feed listing (the rest of the app never sees which source) ===== */
 function itemText(it,name){ const x=it.querySelector(name); return x?x.textContent.trim():""; }
+
+/* ===== GDELT discovery: metadata only (url/title/date), restricted to the source's own domain ===== */
+async function listFromGdelt(src){
+  if(!src.gdelt) return [];
+  const q="domain:"+src.gdelt;
+  const url="https://api.gdeltproject.org/api/v2/doc/doc?query="+encodeURIComponent(q)+
+            "&mode=ArtList&format=json&maxrecords=75&sort=datedesc&timespan=3months";
+  const raw=await fetchViaProxy(url, t=>t.indexOf("{")>=0);
+  if(!raw){ return []; }
+  let j; try{ j=JSON.parse(raw); }catch(e){ return []; }
+  const arts=(j&&j.articles)||[];
+  const out=[];
+  arts.forEach(a=>{
+    const headline=(a.title||"").trim();
+    if(!headline||!isLatin(headline)) return;
+    let d=null;
+    const sd=a.seendate||"";                       // GDELT format: 20260722T101500Z
+    const m=sd.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/);
+    if(m) d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5]));
+    out.push({headline, url:a.url||"", inline:"", date:d?d.toISOString():null, source:src.site, sourceId:src.id});
+  });
+  if(out.length) srcStatus[src.site]=out.length+" ok (GDELT)";
+  return out;
+}
 async function listFromFeeds(src, date){
   for(const feed of src.feeds){
     const xml=await fetchViaProxy(feed, looksLikeFeed);
-    if(!xml){ srcStatus[src.site]="blocked"; continue; }
+    if(!xml){
+      const snip=(lastSnippet||"").toLowerCase();
+      srcStatus[src.site] = /404|not found|page not found/.test(snip) ? "bad URL (404)"
+        : /403|forbidden|denied|captcha|cloudflare/.test(snip) ? "refused by site (403)"
+        : /^http \d/.test(snip) ? snip.toUpperCase()
+        : ("no feed \u2014 got: "+(lastSnippet||"nothing").slice(0,60));
+      continue;
+    }
     const clean=xml.replace(/^[\uFEFF\s]+/,"").replace(/^[^<]+/,"");
     let doc; try{ doc=new DOMParser().parseFromString(clean,"text/xml"); }catch(e){ srcStatus[src.site]="bad xml"; continue; }
     if(doc.querySelector("parsererror")){ doc=new DOMParser().parseFromString(clean,"text/html"); }

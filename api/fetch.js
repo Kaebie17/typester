@@ -12,6 +12,7 @@ const ALLOW_HOSTS = [
   "www.prsindia.org",
   "news.un.org",
   "blogs.worldbank.org",
+  "api.gdeltproject.org",
   "www.worldbank.org",
 ];
 
