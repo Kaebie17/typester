@@ -450,25 +450,28 @@ function itemText(it,name){ const x=it.querySelector(name); return x?x.textConte
 
 /* ===== GDELT discovery: metadata only (url/title/date), restricted to the source's own domain ===== */
 async function listFromGdelt(src){
-  if(!src.gdelt) return [];
+  if(!src.gdelt){ srcStatus[src.site]+=" | no GDELT domain"; return []; }
   const q="domain:"+src.gdelt;
   const url="https://api.gdeltproject.org/api/v2/doc/doc?query="+encodeURIComponent(q)+
             "&mode=ArtList&format=json&maxrecords=75&sort=datedesc&timespan=3months";
   const raw=await fetchViaProxy(url, t=>t.indexOf("{")>=0);
-  if(!raw){ return []; }
-  let j; try{ j=JSON.parse(raw); }catch(e){ return []; }
+  if(!raw){ srcStatus[src.site]+=" | GDELT unreachable: "+(lastSnippet||"nothing").slice(0,50); return []; }
+  let j;
+  try{ j=JSON.parse(raw); }
+  catch(e){ srcStatus[src.site]+=" | GDELT bad JSON: "+raw.replace(/\s+/g," ").slice(0,60); return []; }
   const arts=(j&&j.articles)||[];
+  if(!arts.length){ srcStatus[src.site]+=" | GDELT: 0 articles for "+src.gdelt; return []; }
   const out=[];
   arts.forEach(a=>{
     const headline=(a.title||"").trim();
     if(!headline||!isLatin(headline)) return;
     let d=null;
-    const sd=a.seendate||"";                       // GDELT format: 20260722T101500Z
+    const sd=a.seendate||"";
     const m=sd.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/);
     if(m) d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5]));
     out.push({headline, url:a.url||"", inline:"", date:d?d.toISOString():null, source:src.site, sourceId:src.id});
   });
-  if(out.length) srcStatus[src.site]=out.length+" ok (GDELT)";
+  srcStatus[src.site]= out.length ? (out.length+" ok (GDELT)") : (srcStatus[src.site]+" | GDELT: "+arts.length+" found, none usable");
   return out;
 }
 async function listFromFeeds(src, date){
@@ -580,15 +583,16 @@ function difficultyScore(text){
 function diffLabel(text){ return {Easy:"E",Medium:"M",Hard:"H"}[difficultyScore(text).difficulty]; }
 
 /* ===== title generation from passage content ===== */
-const TITLE_STOP=new Set(("The A An This That These Those It He She They We You I In On At For To Of And But Or So If As By With From Its Their His Her Our Your There Here When What Who How Also More Most Such Only Two First Any Out New Over Under After Before During While Because However Further Moreover Therefore Accordingly Meanwhile Additionally").split(" "));
+const TITLE_STOP=new Set(("The A An This That These Those It He She They We You I In On At For To Of And But Or So If As By With From Its Their His Her Our Your There Here When What Who How Also More Most Such Only Two First Any Out New Over Under After Before During While Because However Further Moreover Therefore Accordingly Meanwhile Additionally Among Between Through Within Without Across Since Until Unless Whether Although Though Yet Still Even Once Every Each Both Many Much Some Few Several Other Another Same Own Very Just Now Then Thus Hence Indeed Rather Perhaps Often Always Never Later Earlier Today Recently Currently Finally Overall Together Along Around Beyond Despite Toward Towards Upon Whose Which Where Why").split(" "));
 const GENERIC=new Set(("Ministry Department Government Authority Commission Board Council Committee Secretariat Office Bureau Mission Scheme Programme Program Project Report Statement Release Press India Indian State States National Union Central Section Article Part Chapter Note Data Year Today").split(" "));
 function extractPhrases(text){
   const head=text.split(/(?<=[.!?])\s+/).slice(0,5).join(" ");
   const raw=head.match(/\b[A-Z][A-Za-z]*(?:\s+(?:of|for|and|on|the)\s+)?(?:[A-Z][A-Za-z]*)?(?:\s+[A-Z][A-Za-z]*)?\b/g)||[];
   const counts={};
   raw.forEach(p=>{
-    const parts=p.split(/\s+/).filter(w=>!TITLE_STOP.has(w));
+    const parts=p.split(/\s+/).filter(w=>!TITLE_STOP.has(w) && !TITLE_STOP.has(w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()));
     if(parts.length<2) return;                                  // need a real phrase, not one bare word
+    if(!parts.some(w=>w.length>=5)) return;                     // reject filler like "Among the"
     const key=parts.join(" ").trim();
     if(key.length<8 || key.length>46) return;
     if(parts.every(w=>GENERIC.has(w))) return;                  // "Ministry Department" is not a title
@@ -648,6 +652,7 @@ function customRecords(){
 }
 
 /* ===== cache-first load, then background refresh of new articles only ===== */
+let articles=[];
 let refreshing=false;
 function rebuildList(){
   articles=loadCache().concat(customRecords()).concat(examRecords());
