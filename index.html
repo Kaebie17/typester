@@ -413,11 +413,21 @@ const SOURCE_DEFS={
        sel:["#ContentPlaceHolder1_divContent",".release-content","#PdfDiv"]},
   rbi:{site:"RBI", feeds:["https://www.rbi.org.in/pressreleases_rss.xml","https://www.rbi.org.in/notifications_rss.xml","https://www.rbi.org.in/speeches_rss.xml"],
        sel:["#pressrelease",".content",".tablebg"]},
-  prs:{site:"PRS India", feeds:["https://prsindia.org/rss.xml","https://prsindia.org/feed","https://prsindia.org/theprsblog/feed"],
+  prs:{site:"PRS India", feeds:[
+    "https://prsindia.org/theprsblog/feed",
+    "https://prsindia.org/rss.xml",
+    "https://prsindia.org/feed"
+  ],
        sel:[".field--name-body",".node__content",".content"]},
   un:{site:"UN News", feeds:["https://news.un.org/feed/subscribe/en/news/all/rss.xml","https://news.un.org/feed/subscribe/en/news/topic/economic-development/rss.xml"],
       sel:[".field--name-body",".story-content",".content"]},
-  worldbank:{site:"World Bank", feeds:["https://blogs.worldbank.org/rss-fulltext.xml","https://blogs.worldbank.org/en/rss","https://blogs.worldbank.org/rss.xml"],
+  worldbank:{site:"World Bank", feeds:[
+    "https://blogs.worldbank.org/feed/endpovertyinsouthasia/rss.xml",
+    "https://blogs.worldbank.org/feed/developmenttalk/rss.xml",
+    "https://blogs.worldbank.org/feed/impactevaluations/rss.xml",
+    "https://blogs.worldbank.org/feed/voices/rss.xml",
+    "https://blogs.worldbank.org/feed/opendata/rss.xml"
+  ],
       sel:[".entry-content",".post-content",".blog-body"]}
 };
 const SOURCES=[
